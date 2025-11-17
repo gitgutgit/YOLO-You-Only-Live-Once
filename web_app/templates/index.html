@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Distilled Vision Agent - Interactive Game</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <h1>🎮 Distilled Vision Agent</h1>
+            <p class="subtitle">Real-Time Vision-Based Game AI - Team Backward</p>
+        </header>
+
+        <!-- Game Area -->
+        <div class="game-section">
+            <div class="game-container">
+                <canvas id="gameCanvas" width="{{ config.width }}" height="{{ config.height }}"></canvas>
+                
+                <!-- Game Overlay -->
+                <div id="gameOverlay" class="game-overlay">
+                    <div id="startScreen" class="overlay-screen">
+                        <h2>🚀 Welcome to Vision Game!</h2>
+                        <p>Choose your mode:</p>
+                        <div class="mode-buttons">
+                            <button id="humanModeBtn" class="mode-btn human-btn">
+                                🧑 Human Mode
+                                <span>Play yourself</span>
+                            </button>
+                            <button id="aiModeBtn" class="mode-btn ai-btn">
+                                🤖 AI Mode  
+                                <span>Watch AI play</span>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div id="gameOverScreen" class="overlay-screen" style="display: none;">
+                        <h2>🎯 Game Over!</h2>
+                        <div id="finalStats"></div>
+                        <div class="restart-buttons">
+                            <button id="restartBtn" class="btn primary">🔄 Play Again</button>
+                            <button id="switchModeBtn" class="btn secondary">🔄 Switch Mode</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Game Controls -->
+            <div class="controls-panel">
+                <div class="game-info">
+                    <div class="info-item">
+                        <span class="label">Mode:</span>
+                        <span id="currentMode" class="value">-</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="label">Score:</span>
+                        <span id="currentScore" class="value">0</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="label">Time:</span>
+                        <span id="currentTime" class="value">0.0s</span>
+                    </div>
+                    <div class="info-item" id="aiActionInfo" style="display: none;">
+                        <span class="label">AI Action:</span>
+                        <span id="aiAction" class="value ai-action">-</span>
+                    </div>
+                </div>
+
+                <div class="controls-help">
+                    <h3>🎮 Controls</h3>
+                    <div id="humanControls" class="control-group">
+                        <div class="control-item">
+                            <kbd>SPACE</kbd> <span>Jump</span>
+                        </div>
+                        <div class="control-item">
+                            <kbd>A</kbd> / <kbd>←</kbd> <span>Move Left</span>
+                        </div>
+                        <div class="control-item">
+                            <kbd>D</kbd> / <kbd>→</kbd> <span>Move Right</span>
+                        </div>
+                    </div>
+                    <div id="aiControls" class="control-group" style="display: none;">
+                        <div class="control-item">
+                            <span class="ai-indicator">🤖</span> <span>AI is playing automatically</span>
+                        </div>
+                    </div>
+                    <div class="control-group">
+                        <div class="control-item">
+                            <kbd>H</kbd> <span>Human Mode</span>
+                        </div>
+                        <div class="control-item">
+                            <kbd>I</kbd> <span>AI Mode</span>
+                        </div>
+                        <div class="control-item">
+                            <kbd>R</kbd> <span>Restart</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Statistics Panel -->
+        <div class="stats-section">
+            <div class="stats-panel">
+                <h3>📊 Performance Stats</h3>
+                <div class="stats-grid">
+                    <div class="stat-item">
+                        <span class="stat-label">FPS:</span>
+                        <span id="fpsCounter" class="stat-value">-</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Frame:</span>
+                        <span id="frameCounter" class="stat-value">-</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Obstacles:</span>
+                        <span id="obstacleCount" class="stat-value">-</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Status:</span>
+                        <span id="connectionStatus" class="stat-value">Connecting...</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="leaderboard-panel">
+                <h3>🏆 Leaderboard</h3>
+                <div id="leaderboard" class="leaderboard-list">
+                    <div class="loading">Loading...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>
+                <strong>Team Backward</strong> - COMS W4995 Deep Learning for Computer Vision<br>
+                Jeewon Kim (jk4864) • Chloe Lee (cl4490) • <strong>Minsuk Kim (mk4434)</strong>
+            </p>
+            <p class="tech-stack">
+                Built with Flask + SocketIO + HTML5 Canvas | Deployed on GCP Cloud Run
+            </p>
+        </footer>
+    </div>
+
+    <!-- Game Configuration -->
+    <script>
+        const GAME_CONFIG = {{ config | tojson }};
+    </script>
+    <script src="{{ url_for('static', filename='js/game.js') }}"></script>
+</body>
+</html>
