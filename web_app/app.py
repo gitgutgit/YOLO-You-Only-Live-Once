@@ -22,6 +22,15 @@ import sys
 # Add src to path
 sys.path.append(str(Path(__file__).parent.parent / "src"))
 
+# ✨ 데이터 수집 시스템 import
+try:
+    from training_data_collector import TrainingDataCollector
+    data_collector = TrainingDataCollector()
+    print("✅ 훈련 데이터 수집 시스템 활성화")
+except Exception as e:
+    print(f"⚠️ 데이터 수집 시스템 로드 실패: {e}")
+    data_collector = None
+
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'distilled-vision-agent-secret'
 socketio = SocketIO(app, cors_allowed_origins="*")
@@ -365,6 +374,31 @@ def handle_get_state():
             'state': session.get_state()
         })
 
+# ✨ 데이터 수집 이벤트
+@socketio.on('save_gameplay_data')
+def handle_save_gameplay_data(data):
+    """게임플레이 데이터 저장 (훈련용)"""
+    if data_collector:
+        try:
+            saved_path = data_collector.save_gameplay_session(data)
+            emit('data_saved', {
+                'success': True,
+                'message': '데이터가 저장되었습니다',
+                'path': saved_path
+            })
+            print(f"📊 게임플레이 데이터 저장 완료: {saved_path}")
+        except Exception as e:
+            print(f"❌ 데이터 저장 오류: {e}")
+            emit('data_saved', {
+                'success': False,
+                'message': str(e)
+            })
+    else:
+        emit('data_saved', {
+            'success': False,
+            'message': '데이터 수집 시스템이 비활성화되어 있습니다'
+        })
+
 # 헬스체크 (GCP Cloud Run용)
 @app.route('/health')
 def health_check():
@@ -374,6 +408,46 @@ def health_check():
         'timestamp': datetime.now().isoformat(),
         'active_sessions': len(game_sessions)
     })
+
+# 📊 데이터 통계 엔드포인트
+@app.route('/api/data/stats')
+def get_data_stats():
+    """수집된 데이터 통계"""
+    if data_collector:
+        return jsonify(data_collector.get_stats())
+    return jsonify({'error': '데이터 수집 시스템 비활성화'}), 503
+
+@app.route('/api/data/export/yolo')
+def export_yolo_dataset():
+    """YOLO 데이터셋 export (제이용)"""
+    if data_collector:
+        try:
+            output_dir = "data/yolo_export"
+            data_collector.export_for_yolo(output_dir)
+            return jsonify({
+                'success': True,
+                'message': 'YOLO 데이터셋 export 완료',
+                'path': output_dir
+            })
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+    return jsonify({'error': '데이터 수집 시스템 비활성화'}), 503
+
+@app.route('/api/data/export/rl')
+def export_rl_dataset():
+    """RL 데이터셋 export (클로용)"""
+    if data_collector:
+        try:
+            output_dir = "data/rl_export"
+            data_collector.export_for_rl(output_dir)
+            return jsonify({
+                'success': True,
+                'message': 'RL 데이터셋 export 완료',
+                'path': output_dir
+            })
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+    return jsonify({'error': '데이터 수집 시스템 비활성화'}), 503
 
 if __name__ == '__main__':
     print("🌐 Distilled Vision Agent - Web Game Server")

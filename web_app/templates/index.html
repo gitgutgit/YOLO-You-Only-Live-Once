@@ -6,12 +6,90 @@
     <title>Distilled Vision Agent - Interactive Game</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
+    <style>
+        /* ✨ 개선된 현대적 스타일 */
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #0f3460 100%);
+            color: #ffffff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            text-shadow: 0 0 10px rgba(0, 217, 255, 0.5);
+        }
+        .header h1 {
+            font-size: 48px;
+            margin: 0;
+            background: linear-gradient(45deg, #00d9ff, #ff4757);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .subtitle {
+            color: #aaa;
+            font-size: 16px;
+        }
+        #gameCanvas {
+            border: 3px solid #00d9ff;
+            border-radius: 15px;
+            box-shadow: 0 0 30px rgba(0, 217, 255, 0.3);
+            display: block;
+            margin: 0 auto;
+        }
+        .controls {
+            margin-top: 20px;
+            text-align: center;
+        }
+        .control-hint {
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 10px;
+            display: inline-block;
+            margin-top: 10px;
+        }
+        .control-hint h3 {
+            margin: 0 0 10px 0;
+            color: #00d9ff;
+        }
+        .control-hint p {
+            margin: 5px 0;
+            font-size: 14px;
+        }
+        .stats-panel {
+            background: rgba(0, 0, 0, 0.8);
+            padding: 20px;
+            border-radius: 10px;
+            margin-top: 20px;
+            border: 2px solid #00d9ff;
+        }
+        .stat-item {
+            display: flex;
+            justify-content: space-between;
+            margin: 10px 0;
+            padding: 5px 0;
+            border-bottom: 1px solid #333;
+        }
+        .stat-label {
+            color: #aaa;
+        }
+        .stat-value {
+            color: #00d9ff;
+            font-weight: bold;
+        }
+    </style>
 </head>
 <body>
     <div class="container">
         <!-- Header -->
         <header class="header">
             <h1>🎮 Distilled Vision Agent</h1>
+            <p class="subtitle">✨ 현대적 그래픽 + 부드러운 조작 + 데이터 수집</p>
             <p class="subtitle">Real-Time Vision-Based Game AI - Team Backward</p>
         </header>
 
@@ -146,10 +224,41 @@
         </footer>
     </div>
 
+    <!-- ✨ 개선된 게임 시작 버튼 추가 -->
+    <div style="text-align: center; margin-top: 30px;">
+        <div class="control-hint">
+            <h3>🎮 조작법</h3>
+            <p>⬆️ Space / ↑ : 점프</p>
+            <p>⬅️ A / ← : 왼쪽 이동 (누르고 있으면 연속 이동!)</p>
+            <p>➡️ D / → : 오른쪽 이동 (누르고 있으면 연속 이동!)</p>
+            <p style="color: #00d9ff; margin-top: 10px;">✨ 키를 계속 누르면 부드럽게 이동합니다!</p>
+        </div>
+        
+        <div class="stats-panel" style="max-width: 600px; margin: 20px auto;">
+            <h3 style="color: #00d9ff; text-align: center;">📊 데이터 수집 시스템</h3>
+            <div class="stat-item">
+                <span class="stat-label">상태:</span>
+                <span class="stat-value" id="dataCollectionStatus">활성화됨</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">저장된 프레임:</span>
+                <span class="stat-value" id="collectedFrames">0</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">훈련 데이터:</span>
+                <span class="stat-value">게임 종료 시 자동 저장</span>
+            </div>
+            <p style="font-size: 12px; color: #aaa; margin-top: 10px; text-align: center;">
+                제이와 클로가 YOLOv8, PPO/DQN 훈련에 사용할 데이터가 자동으로 수집됩니다
+            </p>
+        </div>
+    </div>
+
     <!-- Game Configuration -->
     <script>
         const GAME_CONFIG = {{ config | tojson }};
     </script>
-    <script src="{{ url_for('static', filename='js/game.js') }}"></script>
+    <!-- ✨ 개선된 게임 클라이언트 사용 -->
+    <script src="{{ url_for('static', filename='js/game_improved.js') }}"></script>
 </body>
 </html>

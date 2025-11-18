@@ -106,6 +106,53 @@ python3 scripts/test_core_logic.py
 - [ ] Real-time performance profiling
 - [ ] Final evaluation & reporting
 
+## 📊 Data Collection System
+
+### 🎮 Web Application for Data Collection
+
+A Flask-based web application is provided to collect training data from real gameplay:
+
+```bash
+cd web_app
+python app.py
+# Access at http://localhost:5000
+```
+
+**Features**:
+- **Human Mode**: Play manually to collect expert demonstrations
+- **AI Mode**: Observe AI behavior and collect diverse gameplay
+- **Automatic Save**: Game sessions are automatically saved to `collected_data/`
+- **Real-time Stats**: Monitor FPS, score, and data collection status
+
+### 📤 Export Training Datasets
+
+After collecting gameplay data, export datasets for training:
+
+**For YOLO Training (Jeewon)**:
+```bash
+curl -X POST http://localhost:5000/api/data/export/yolo
+# → Creates training_exports/yolo_dataset/ with images + labels
+```
+
+**For RL Training (Chloe)**:
+```bash
+curl -X POST http://localhost:5000/api/data/export/rl
+# → Creates training_exports/rl_dataset/ with observations, actions, rewards
+```
+
+**Check Collection Stats**:
+```bash
+curl http://localhost:5000/api/data/stats
+```
+
+📖 **Detailed Guide**: See [web_app/DATA_COLLECTION_GUIDE.md](web_app/DATA_COLLECTION_GUIDE.md) for complete documentation.
+
+### 🔒 Security Note
+
+- GCP credentials (`.json` files) are automatically excluded from Git via `.gitignore`
+- Training data folders (`collected_data/`, `training_exports/`) are not pushed to GitHub
+- Share exported datasets with team via Google Drive or GCS buckets
+
 ## Success Criteria
 
 - **Detection Quality**: ≥70% mAP on game objects

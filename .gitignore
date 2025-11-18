@@ -61,6 +61,19 @@ models/
 *.onnx
 *.trt
 
+# GCP and Cloud credentials (⚠️ CRITICAL: NEVER COMMIT)
+*.json
+gcp-key*.json
+service-account*.json
+.gcp/
+.google/
+credentials/
+secrets/
+
+# Training data collected from web
+web_app/collected_data/
+web_app/training_exports/
+
 # Temporary files
 *.tmp
 *.temp
