@@ -1030,11 +1030,20 @@
                 this.particles = [];  // ⭐ 파티클 효과용
                 this.playerName = null;  // 플레이어 이름
                 
-                // 키보드 상태
+                // 키보드 상태 (부드러운 이동을 위한 속도 기반)
                 this.keys = {
                     left: false,
                     right: false
                 };
+                
+                // 플레이어 속도 (부드러운 이동)
+                this.playerVelocity = {
+                    x: 0,
+                    y: 0
+                };
+                this.acceleration = 1.5;  // 가속도
+                this.maxSpeed = 8;        // 최대 속도
+                this.friction = 0.85;     // 마찰력 (감속)
                 
                 // 글로벌 참조 (모달에서 접근)
                 window.gameClient = this;
@@ -1131,6 +1140,12 @@
                     }
                     
                     this.gameState = data.state || data;
+                    
+                    // 부드러운 이동 업데이트 (Human 모드만)
+                    if (this.currentMode === 'human') {
+                        this.updateSmoothMovement();
+                    }
+                    
                     this.render();
                     this.updateUI();
                 });
@@ -1176,23 +1191,56 @@
             handleKeyDown(e) {
                 if (!this.isRunning || this.currentMode !== 'human') return;
                 
-                const action = this.getActionFromKey(e.key);
-                if (action) {
-                    this.socket.emit('player_action', { action: action });
-                    e.preventDefault();
-                }
-                
                 // 이동 키 상태 저장
                 if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
                     this.keys.left = true;
+                    e.preventDefault();
                 }
                 if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') {
                     this.keys.right = true;
+                    e.preventDefault();
+                }
+                
+                // 점프는 즉시 전송 (한 번만)
+                if (e.key === ' ' || e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') {
+                    this.socket.emit('player_action', { action: 'jump' });
+                    e.preventDefault();
                 }
                 
                 // 재시작
                 if (e.key === 'r' || e.key === 'R') {
                     this.startGame(this.currentMode);
+                }
+            }
+            
+            updateSmoothMovement() {
+                // 부드러운 이동: 키 상태에 따라 가속/감속
+                if (this.keys.left) {
+                    this.playerVelocity.x -= this.acceleration;
+                } else if (this.keys.right) {
+                    this.playerVelocity.x += this.acceleration;
+                } else {
+                    // 키를 누르지 않으면 마찰력으로 감속
+                    this.playerVelocity.x *= this.friction;
+                }
+                
+                // 최대 속도 제한
+                if (this.playerVelocity.x > this.maxSpeed) {
+                    this.playerVelocity.x = this.maxSpeed;
+                } else if (this.playerVelocity.x < -this.maxSpeed) {
+                    this.playerVelocity.x = -this.maxSpeed;
+                }
+                
+                // 속도가 거의 0이면 정지
+                if (Math.abs(this.playerVelocity.x) < 0.1) {
+                    this.playerVelocity.x = 0;
+                }
+                
+                // 현재 속도에 따라 액션 전송
+                if (this.playerVelocity.x < -0.5) {
+                    this.socket.emit('player_action', { action: 'left' });
+                } else if (this.playerVelocity.x > 0.5) {
+                    this.socket.emit('player_action', { action: 'right' });
                 }
             }
             
@@ -1327,51 +1375,120 @@
                             ctx.fill();
                             
                         } else {
-                            // 💥 메테오: 실제 불타는 메테오 느낌
+                            // 💥 메테오: 실제 불타는 운석 + 꼬리 효과
                             const centerX = obs.x + obs.size / 2;
                             const centerY = obs.y + obs.size / 2;
                             const radius = obs.size / 2;
                             
-                            // 외부 불꽃 효과 (번지는 오렌지 불빛)
-                            ctx.shadowColor = 'rgba(255, 100, 0, 0.8)';
-                            ctx.shadowBlur = 25;
+                            // 🔥 불타는 꼬리 효과 (위쪽으로 떨어지는 방향)
+                            const tailLength = radius * 3;
+                            const tailGradient = ctx.createLinearGradient(
+                                centerX, centerY - tailLength,
+                                centerX, centerY
+                            );
+                            tailGradient.addColorStop(0, 'rgba(255, 69, 0, 0)');
+                            tailGradient.addColorStop(0.3, 'rgba(255, 140, 0, 0.3)');
+                            tailGradient.addColorStop(0.6, 'rgba(255, 215, 0, 0.6)');
+                            tailGradient.addColorStop(1, 'rgba(255, 255, 255, 0.8)');
+                            
+                            ctx.fillStyle = tailGradient;
+                            ctx.beginPath();
+                            // 불꽃 꼬리 (삼각형 모양, 위쪽으로)
+                            ctx.moveTo(centerX, centerY - tailLength);
+                            ctx.lineTo(centerX - radius * 0.6, centerY - radius * 0.3);
+                            ctx.lineTo(centerX + radius * 0.6, centerY - radius * 0.3);
+                            ctx.closePath();
+                            ctx.fill();
+                            
+                            // 불꽃 파티클 (꼬리 주변)
+                            for (let i = 0; i < 5; i++) {
+                                const particleY = centerY - tailLength * 0.3 - Math.random() * tailLength * 0.5;
+                                const particleX = centerX + (Math.random() - 0.5) * radius;
+                                const particleSize = Math.random() * 4 + 2;
+                                const alpha = Math.random() * 0.5 + 0.3;
+                                
+                                ctx.fillStyle = `rgba(255, ${150 + Math.random() * 100}, 0, ${alpha})`;
+                                ctx.beginPath();
+                                ctx.arc(particleX, particleY, particleSize, 0, Math.PI * 2);
+                                ctx.fill();
+                            }
+                            
+                            // 외부 불꽃 광채 (메테오 본체 주변)
+                            ctx.shadowColor = 'rgba(255, 100, 0, 1)';
+                            ctx.shadowBlur = 30;
                             
                             const flameGradient = ctx.createRadialGradient(
-                                centerX, centerY, radius * 0.3,
-                                centerX, centerY, radius * 1.3
+                                centerX, centerY, radius * 0.2,
+                                centerX, centerY, radius * 1.4
                             );
-                            flameGradient.addColorStop(0, '#FFD700');
-                            flameGradient.addColorStop(0.4, '#FF8C00');
-                            flameGradient.addColorStop(0.7, '#FF4500');
+                            flameGradient.addColorStop(0, 'rgba(255, 255, 255, 0.9)');
+                            flameGradient.addColorStop(0.3, 'rgba(255, 215, 0, 0.7)');
+                            flameGradient.addColorStop(0.6, 'rgba(255, 140, 0, 0.4)');
+                            flameGradient.addColorStop(0.8, 'rgba(255, 69, 0, 0.2)');
                             flameGradient.addColorStop(1, 'rgba(139, 0, 0, 0)');
                             
                             ctx.fillStyle = flameGradient;
                             ctx.beginPath();
-                            ctx.arc(centerX, centerY, radius * 1.2, 0, Math.PI * 2);
+                            ctx.arc(centerX, centerY, radius * 1.3, 0, Math.PI * 2);
                             ctx.fill();
                             
                             // 메테오 본체 (울퉁불퉁한 바위)
-                            ctx.shadowBlur = 10;
+                            ctx.shadowBlur = 15;
                             const meteorGradient = ctx.createRadialGradient(
-                                centerX - radius * 0.2, centerY - radius * 0.2, radius * 0.1,
+                                centerX - radius * 0.3, centerY - radius * 0.3, radius * 0.1,
                                 centerX, centerY, radius
                             );
-                            meteorGradient.addColorStop(0, '#A0522D');
-                            meteorGradient.addColorStop(0.5, '#654321');
-                            meteorGradient.addColorStop(1, '#2F1F1F');
+                            meteorGradient.addColorStop(0, '#8B4513');  // 밝은 갈색
+                            meteorGradient.addColorStop(0.4, '#654321'); // 중간 갈색
+                            meteorGradient.addColorStop(0.7, '#3E2723'); // 어두운 갈색
+                            meteorGradient.addColorStop(1, '#1A1A1A');   // 거의 검은색
                             
                             ctx.fillStyle = meteorGradient;
                             ctx.beginPath();
-                            ctx.arc(centerX, centerY, radius * 0.95, 0, Math.PI * 2);
+                            
+                            // 울퉁불퉁한 원형 (실제 운석처럼)
+                            const bumps = 10;
+                            for (let i = 0; i <= bumps; i++) {
+                                const angle = (Math.PI * 2 * i) / bumps;
+                                // 각 지점마다 랜덤한 반경 (울퉁불퉁)
+                                const bumpFactor = 0.8 + Math.sin(i * 3.7) * 0.15 + Math.cos(i * 2.3) * 0.1;
+                                const bumpRadius = radius * bumpFactor;
+                                const x = centerX + Math.cos(angle) * bumpRadius;
+                                const y = centerY + Math.sin(angle) * bumpRadius;
+                                
+                                if (i === 0) {
+                                    ctx.moveTo(x, y);
+                                } else {
+                                    ctx.lineTo(x, y);
+                                }
+                            }
+                            ctx.closePath();
                             ctx.fill();
                             
-                            // 균열 효과 (붉은 선)
-                            ctx.strokeStyle = 'rgba(255, 69, 0, 0.8)';
-                            ctx.lineWidth = 2;
+                            // 표면 균열 효과 (여러 개)
+                            ctx.shadowBlur = 0;
+                            ctx.strokeStyle = 'rgba(255, 100, 0, 0.9)';
+                            ctx.lineWidth = 2.5;
+                            
+                            // 균열 1
                             ctx.beginPath();
-                            ctx.moveTo(centerX - radius * 0.4, centerY - radius * 0.2);
-                            ctx.lineTo(centerX + radius * 0.3, centerY + radius * 0.3);
+                            ctx.moveTo(centerX - radius * 0.5, centerY - radius * 0.4);
+                            ctx.lineTo(centerX - radius * 0.1, centerY - radius * 0.1);
+                            ctx.lineTo(centerX + radius * 0.2, centerY + radius * 0.3);
                             ctx.stroke();
+                            
+                            // 균열 2
+                            ctx.beginPath();
+                            ctx.moveTo(centerX + radius * 0.4, centerY - radius * 0.3);
+                            ctx.lineTo(centerX + radius * 0.1, centerY + radius * 0.1);
+                            ctx.lineTo(centerX - radius * 0.3, centerY + radius * 0.4);
+                            ctx.stroke();
+                            
+                            // 밝게 타는 부분 (흰색-노란색 점)
+                            ctx.fillStyle = 'rgba(255, 255, 200, 0.9)';
+                            ctx.beginPath();
+                            ctx.arc(centerX - radius * 0.2, centerY - radius * 0.1, radius * 0.15, 0, Math.PI * 2);
+                            ctx.fill();
                         }
                         
                         ctx.restore();
