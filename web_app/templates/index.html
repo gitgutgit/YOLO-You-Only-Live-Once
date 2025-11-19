@@ -282,6 +282,65 @@
         .modal-button.secondary:hover {
             background: #e0e0e0;
         }
+        
+        /* 모바일 가상 방향키 (768px 이하에서만 표시) */
+        .mobile-controls {
+            display: none;
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1000;
+            gap: 15px;
+            align-items: center;
+        }
+        
+        @media (max-width: 768px) {
+            .mobile-controls {
+                display: flex !important;
+            }
+            
+            .game-wrapper {
+                grid-template-columns: 1fr;
+            }
+            
+            .side-panel {
+                order: 2;
+            }
+        }
+        
+        .mobile-btn {
+            width: 70px;
+            height: 70px;
+            background: rgba(102, 126, 234, 0.95);
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 16px;
+            color: white;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.15s ease;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        .mobile-btn:active {
+            background: rgba(118, 75, 162, 0.95);
+            transform: scale(0.9);
+            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.4);
+        }
+        
+        .mobile-btn.jump {
+            background: rgba(245, 87, 108, 0.95);
+        }
+        
+        .mobile-btn.jump:active {
+            background: rgba(240, 70, 90, 0.95);
+        }
 
         .game-container {
             position: relative;
@@ -633,7 +692,7 @@
         <header class="header">
             <h1>🎮 Distilled Vision Agent</h1>
             <p class="subtitle">Real-Time Vision-Based Game AI with Self-Play Learning</p>
-            <p class="subtitle">✨ 최신 디자인 + 부드러운 조작 + 실시간 데이터 수집</p>
+            <p class="subtitle">✨ Modern UI • Smooth Controls • Real-Time Data Collection</p>
             <span class="badge">Team Backward - Columbia Deep Learning</span>
         </header>
 
@@ -646,19 +705,19 @@
                 <!-- 시작 오버레이 -->
                 <div id="gameOverlay" class="game-overlay">
                     <div class="start-screen">
-                        <h2>🚀 게임 시작!</h2>
-                        <p>플레이 모드를 선택하세요</p>
+                        <h2>🚀 Start Game</h2>
+                        <p>Choose your play mode</p>
                         
                         <div class="mode-buttons">
                             <button id="humanModeBtn" class="mode-btn human">
                                 <span class="icon">🧑</span>
                                 <span class="label">Human Mode</span>
-                                <span class="desc">직접 플레이하기</span>
+                                <span class="desc">Play yourself</span>
                             </button>
                             <button id="aiModeBtn" class="mode-btn ai">
                                 <span class="icon">🤖</span>
                                 <span class="label">AI Mode</span>
-                                <span class="desc">AI 관찰하기</span>
+                                <span class="desc">Watch AI play</span>
                             </button>
                         </div>
                     </div>
@@ -669,61 +728,61 @@
             <div class="side-panel">
                 <!-- 게임 정보 -->
                 <div class="panel-card">
-                    <h3>📊 게임 정보</h3>
+                    <h3>📊 Game Info</h3>
                     <div class="stat-row">
-                        <span class="stat-label">모드</span>
+                        <span class="stat-label">Mode</span>
                         <span class="stat-value" id="currentMode">-</span>
                     </div>
                     <div class="stat-row">
-                        <span class="stat-label">점수</span>
+                        <span class="stat-label">Score</span>
                         <span class="stat-value" id="currentScore">0</span>
                     </div>
                     <div class="stat-row">
-                        <span class="stat-label">시간</span>
+                        <span class="stat-label">Time</span>
                         <span class="stat-value" id="currentTime">0.0s</span>
                     </div>
                     <div class="stat-row">
-                        <span class="stat-label">상태</span>
+                        <span class="stat-label">Status</span>
                         <span id="connectionStatus" class="status-indicator connected">
                             <span class="status-dot"></span>
-                            연결됨
+                            Connected
                         </span>
                     </div>
                 </div>
 
                 <!-- 컨트롤 -->
                 <div class="panel-card controls-hint">
-                    <h4>🎮 조작법</h4>
+                    <h4>🎮 Controls</h4>
                     <div class="control-item">
                         <kbd>SPACE</kbd>
-                        <span>점프</span>
+                        <span>Jump</span>
                     </div>
                     <div class="control-item">
                         <kbd>←</kbd> <kbd>→</kbd>
-                        <span>좌우 이동</span>
+                        <span>Move</span>
                     </div>
                     <div class="control-item">
                         <kbd>R</kbd>
-                        <span>재시작</span>
+                        <span>Restart</span>
                     </div>
                     <p style="margin-top: 12px; opacity: 0.9; font-size: 13px;">
-                        ✨ 키를 누르고 있으면 부드럽게 이동합니다!
+                        ✨ Hold keys for smooth movement
                     </p>
                 </div>
 
                 <!-- 데이터 수집 -->
                 <div class="panel-card data-collection">
-                    <h4>📦 데이터 수집 시스템</h4>
+                    <h4>📦 Data Collection</h4>
                     <div class="data-stat">
-                        <span class="data-stat-label">수집 상태</span>
-                        <span class="data-stat-value">✅ 활성</span>
+                        <span class="data-stat-label">Status</span>
+                        <span class="data-stat-value">✅ Active</span>
                     </div>
                     <div class="data-stat">
-                        <span class="data-stat-label">프레임</span>
+                        <span class="data-stat-label">Frames</span>
                         <span class="data-stat-value" id="collectedFrames">0</span>
                     </div>
                     <p style="margin-top: 12px; opacity: 0.9; font-size: 13px;">
-                        제이(YOLO)와 클로(RL)의 훈련 데이터가 자동으로 수집됩니다
+                        Auto-collecting training data for Jay (YOLO) & Chloe (RL)
                     </p>
                 </div>
             </div>
@@ -731,10 +790,10 @@
         
         <!-- 리더보드 (하단 전체 너비) -->
         <div class="leaderboard">
-            <h2>🏆 리더보드 TOP 10</h2>
+            <h2>🏆 Leaderboard TOP 10</h2>
             <div id="leaderboardList" class="leaderboard-grid">
                 <p style="text-align: center; color: #999; padding: 40px; grid-column: 1 / -1;">
-                    플레이어가 게임을 시작하면<br>랭킹이 표시됩니다
+                    Rankings will appear here<br>once players start the game
                 </p>
             </div>
         </div>
@@ -742,22 +801,29 @@
         <!-- 플레이어 이름 입력 모달 -->
         <div id="playerNameModal" class="modal">
             <div class="modal-content">
-                <h2 class="modal-title">👤 플레이어 이름</h2>
+                <h2 class="modal-title">👤 Player Name</h2>
                 <p style="text-align: center; color: #666; margin-bottom: 20px;">
-                    랭킹에 표시될 이름을 입력하세요
+                    Enter your name for the leaderboard
                 </p>
                 <input 
                     type="text" 
                     id="playerNameInput" 
                     class="modal-input" 
-                    placeholder="예: Minsuk Kim"
+                    placeholder="e.g. Minsuk Kim"
                     maxlength="20"
                 />
                 <div class="modal-buttons">
-                    <button class="modal-button secondary" onclick="cancelPlayerName()">취소</button>
-                    <button class="modal-button primary" onclick="confirmPlayerName()">시작</button>
+                    <button class="modal-button secondary" onclick="cancelPlayerName()">Cancel</button>
+                    <button class="modal-button primary" onclick="confirmPlayerName()">Start</button>
                 </div>
             </div>
+        </div>
+        
+        <!-- 모바일 가상 컨트롤 (터치 디바이스용) -->
+        <div class="mobile-controls" id="mobileControls">
+            <button class="mobile-btn" id="mobileLeft" aria-label="Move Left">◀</button>
+            <button class="mobile-btn jump" id="mobileJump" aria-label="Jump">▲</button>
+            <button class="mobile-btn" id="mobileRight" aria-label="Move Right">▶</button>
         </div>
 
         <!-- 푸터 -->
@@ -823,17 +889,17 @@
             const name = input.value.trim();
             
             if (!name) {
-                alert('이름을 입력해주세요!');
+                alert('Please enter your name!');
                 return;
             }
             
             playerName = name;
-            localStorage.setItem('playerName', name);  // 저장
+            localStorage.setItem('playerName', name);  // Save to localStorage
             
             const modal = document.getElementById('playerNameModal');
             modal.classList.remove('show');
             
-            // 게임 시작
+            // Start game
             if (window.gameClient && pendingGameMode) {
                 window.gameClient.actuallyStartGame(pendingGameMode, playerName);
             }
@@ -980,14 +1046,14 @@
                 
                 // 소켓 이벤트
                 this.socket.on('connect', () => {
-                    console.log('✅ 서버 연결됨');
-                    document.getElementById('connectionStatus').innerHTML = '<span class="status-dot"></span> 연결됨';
+                    console.log('✅ Server connected');
+                    document.getElementById('connectionStatus').innerHTML = '<span class="status-dot"></span> Connected';
                     document.getElementById('connectionStatus').className = 'status-indicator connected';
                 });
                 
                 this.socket.on('disconnect', () => {
-                    console.log('❌ 서버 연결 끊김');
-                    document.getElementById('connectionStatus').innerHTML = '<span class="status-dot"></span> 연결 끊김';
+                    console.log('❌ Server disconnected');
+                    document.getElementById('connectionStatus').innerHTML = '<span class="status-dot"></span> Disconnected';
                     document.getElementById('connectionStatus').className = 'status-indicator disconnected';
                 });
                 
@@ -1033,13 +1099,13 @@
                 });
                 
                 this.socket.on('game_over', (data) => {
-                    console.log('💀 게임 종료:', data);
+                    console.log('💀 Game Over:', data);
                     this.showGameOver(data);
-                    // 게임 오버 후 리더보드 갱신
+                    // Refresh leaderboard after game over
                     loadLeaderboard();
                 });
                 
-                console.log('✅ 게임 클라이언트 초기화 완료!');
+                console.log('✅ Game client initialized!');
             }
             
             startGameWithModal(mode) {
@@ -1330,27 +1396,70 @@
             showGameOver(data) {
                 this.isRunning = false;
                 
-                // 리더보드 정보 포함
-                let message = `게임 종료!\n\n점수: ${data.score}\n시간: ${data.time.toFixed(1)}초\n플레이어: ${data.player_name || 'Unknown'}`;
+                // Include leaderboard info
+                let message = `Game Over!\n\nScore: ${data.score}\nTime: ${data.time.toFixed(1)}s\nPlayer: ${data.player_name || 'Unknown'}`;
                 
                 if (data.leaderboard && data.leaderboard.length > 0) {
-                    message += '\n\n🏆 리더보드 TOP 5:\n';
+                    message += '\n\n🏆 Leaderboard TOP 5:\n';
                     data.leaderboard.slice(0, 5).forEach((entry, index) => {
-                        message += `${index + 1}. ${entry.player}: ${entry.score}점 (${entry.time}초)\n`;
+                        message += `${index + 1}. ${entry.player}: ${entry.score} pts (${entry.time}s)\n`;
                     });
                 }
                 
                 alert(message);
                 
-                // 게임 오버레이 표시
+                // Show game overlay (can restart)
                 document.getElementById('gameOverlay').classList.remove('hidden');
             }
         }
         
         // 게임 클라이언트 시작
         window.addEventListener('DOMContentLoaded', () => {
-            console.log('🚀 페이지 로드 완료, 게임 클라이언트 시작!');
+            console.log('🚀 Page loaded, starting game client!');
             const game = new SimpleGameClient();
+            
+            // 모바일 가상 컨트롤 이벤트 (터치 디바이스용)
+            if (window.innerWidth <= 768 || 'ontouchstart' in window) {
+                const mobileControls = document.getElementById('mobileControls');
+                if (mobileControls) {
+                    mobileControls.style.display = 'flex';
+                    
+                    // 왼쪽 이동
+                    document.getElementById('mobileLeft').addEventListener('touchstart', (e) => {
+                        e.preventDefault();
+                        if (window.gameClient && window.gameClient.socket) {
+                            window.gameClient.socket.emit('player_action', { action: 'left' });
+                        }
+                    });
+                    
+                    document.getElementById('mobileLeft').addEventListener('touchend', (e) => {
+                        e.preventDefault();
+                        // 키를 떼는 이벤트는 서버에서 자동으로 처리
+                    });
+                    
+                    // 오른쪽 이동
+                    document.getElementById('mobileRight').addEventListener('touchstart', (e) => {
+                        e.preventDefault();
+                        if (window.gameClient && window.gameClient.socket) {
+                            window.gameClient.socket.emit('player_action', { action: 'right' });
+                        }
+                    });
+                    
+                    document.getElementById('mobileRight').addEventListener('touchend', (e) => {
+                        e.preventDefault();
+                    });
+                    
+                    // 점프
+                    document.getElementById('mobileJump').addEventListener('touchstart', (e) => {
+                        e.preventDefault();
+                        if (window.gameClient && window.gameClient.socket) {
+                            window.gameClient.socket.emit('player_action', { action: 'jump' });
+                        }
+                    });
+                    
+                    console.log('📱 Mobile controls enabled');
+                }
+            }
         });
     </script>
 </body>
