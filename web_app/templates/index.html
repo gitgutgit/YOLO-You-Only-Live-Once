@@ -1030,20 +1030,23 @@
                 this.particles = [];  // ⭐ 파티클 효과용
                 this.playerName = null;  // 플레이어 이름
                 
-                // 키보드 상태 (부드러운 이동을 위한 속도 기반)
+                // 키보드 상태
                 this.keys = {
                     left: false,
                     right: false
                 };
                 
-                // 플레이어 속도 (부드러운 이동)
-                this.playerVelocity = {
-                    x: 0,
-                    y: 0
+                // 키 누른 시간 추적
+                this.keyPressTime = {
+                    left: 0,
+                    right: 0
                 };
-                this.acceleration = 1.5;  // 가속도
-                this.maxSpeed = 8;        // 최대 속도
-                this.friction = 0.85;     // 마찰력 (감속)
+                
+                // 길게 누르기 임계값 (밀리초)
+                this.longPressThreshold = 150;  // 150ms 이상 누르면 "길게 누르기"
+                
+                // 연속 이동 인터벌
+                this.moveInterval = null;
                 
                 // 글로벌 참조 (모달에서 접근)
                 window.gameClient = this;
@@ -1140,12 +1143,6 @@
                     }
                     
                     this.gameState = data.state || data;
-                    
-                    // 부드러운 이동 업데이트 (Human 모드만)
-                    if (this.currentMode === 'human') {
-                        this.updateSmoothMovement();
-                    }
-                    
                     this.render();
                     this.updateUI();
                 });
@@ -1191,13 +1188,38 @@
             handleKeyDown(e) {
                 if (!this.isRunning || this.currentMode !== 'human') return;
                 
-                // 이동 키 상태 저장
+                // 이동 키 처리
                 if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
-                    this.keys.left = true;
+                    if (!this.keys.left) {
+                        // 첫 번째 눌림: 즉시 한 번 이동
+                        this.socket.emit('player_action', { action: 'left' });
+                        this.keys.left = true;
+                        this.keyPressTime.left = Date.now();
+                        
+                        // 길게 누르기 감지 시작
+                        setTimeout(() => {
+                            if (this.keys.left) {
+                                this.startContinuousMove('left');
+                            }
+                        }, this.longPressThreshold);
+                    }
                     e.preventDefault();
                 }
+                
                 if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') {
-                    this.keys.right = true;
+                    if (!this.keys.right) {
+                        // 첫 번째 눌림: 즉시 한 번 이동
+                        this.socket.emit('player_action', { action: 'right' });
+                        this.keys.right = true;
+                        this.keyPressTime.right = Date.now();
+                        
+                        // 길게 누르기 감지 시작
+                        setTimeout(() => {
+                            if (this.keys.right) {
+                                this.startContinuousMove('right');
+                            }
+                        }, this.longPressThreshold);
+                    }
                     e.preventDefault();
                 }
                 
@@ -1213,43 +1235,45 @@
                 }
             }
             
-            updateSmoothMovement() {
-                // 부드러운 이동: 키 상태에 따라 가속/감속
-                if (this.keys.left) {
-                    this.playerVelocity.x -= this.acceleration;
-                } else if (this.keys.right) {
-                    this.playerVelocity.x += this.acceleration;
-                } else {
-                    // 키를 누르지 않으면 마찰력으로 감속
-                    this.playerVelocity.x *= this.friction;
+            startContinuousMove(direction) {
+                // 이미 연속 이동 중이면 취소
+                if (this.moveInterval) {
+                    clearInterval(this.moveInterval);
                 }
                 
-                // 최대 속도 제한
-                if (this.playerVelocity.x > this.maxSpeed) {
-                    this.playerVelocity.x = this.maxSpeed;
-                } else if (this.playerVelocity.x < -this.maxSpeed) {
-                    this.playerVelocity.x = -this.maxSpeed;
-                }
-                
-                // 속도가 거의 0이면 정지
-                if (Math.abs(this.playerVelocity.x) < 0.1) {
-                    this.playerVelocity.x = 0;
-                }
-                
-                // 현재 속도에 따라 액션 전송
-                if (this.playerVelocity.x < -0.5) {
-                    this.socket.emit('player_action', { action: 'left' });
-                } else if (this.playerVelocity.x > 0.5) {
-                    this.socket.emit('player_action', { action: 'right' });
-                }
+                // 50ms마다 액션 전송 (부드러운 연속 이동)
+                this.moveInterval = setInterval(() => {
+                    if ((direction === 'left' && this.keys.left) || 
+                        (direction === 'right' && this.keys.right)) {
+                        this.socket.emit('player_action', { action: direction });
+                    } else {
+                        // 키를 떼면 인터벌 중지
+                        clearInterval(this.moveInterval);
+                        this.moveInterval = null;
+                    }
+                }, 50);
             }
             
             handleKeyUp(e) {
                 if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
                     this.keys.left = false;
+                    this.keyPressTime.left = 0;
+                    
+                    // 연속 이동 중지
+                    if (this.moveInterval) {
+                        clearInterval(this.moveInterval);
+                        this.moveInterval = null;
+                    }
                 }
                 if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') {
                     this.keys.right = false;
+                    this.keyPressTime.right = 0;
+                    
+                    // 연속 이동 중지
+                    if (this.moveInterval) {
+                        clearInterval(this.moveInterval);
+                        this.moveInterval = null;
+                    }
                 }
             }
             
@@ -1707,30 +1731,39 @@
             }
         }
         
-        // 버튼 이벤트 핸들러 (마우스 + 터치 모두 지원, 길게 누르기 지원)
+        // 버튼 이벤트 핸들러 (마우스 + 터치 모두 지원, 짧게/길게 누르기 구분)
         function setupControlButton(buttonId, action) {
             const button = document.getElementById(buttonId);
             if (!button) return;
             
             let pressInterval = null;
+            let pressTimeout = null;
+            const longPressThreshold = 150;  // 150ms
             
             // 누르기 시작
             function startPress() {
                 if (window.gameClient && window.gameClient.socket) {
-                    // 즉시 한 번 전송
+                    // 즉시 한 번 전송 (짧게 누르기)
                     window.gameClient.socket.emit('player_action', { action: action });
                     
-                    // 길게 누르면 계속 전송 (100ms마다)
-                    pressInterval = setInterval(() => {
-                        if (window.gameClient && window.gameClient.socket) {
-                            window.gameClient.socket.emit('player_action', { action: action });
-                        }
-                    }, 100);
+                    // 150ms 후에 길게 누르기 판단
+                    pressTimeout = setTimeout(() => {
+                        // 길게 누르면 계속 전송 (50ms마다)
+                        pressInterval = setInterval(() => {
+                            if (window.gameClient && window.gameClient.socket) {
+                                window.gameClient.socket.emit('player_action', { action: action });
+                            }
+                        }, 50);
+                    }, longPressThreshold);
                 }
             }
             
             // 누르기 종료
             function stopPress() {
+                if (pressTimeout) {
+                    clearTimeout(pressTimeout);
+                    pressTimeout = null;
+                }
                 if (pressInterval) {
                     clearInterval(pressInterval);
                     pressInterval = null;
