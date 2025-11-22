@@ -32,3 +32,6 @@ Example:
 1 0.286458 0.062500 0.052083 0.069444 
 1 0.441667 0.027778 0.052083 0.069444 
 
+### how to use? in YOlo?
+
+yolo detect train data=web_app/game_dataset/data.yaml model=yolov8n.pt epochs=50
