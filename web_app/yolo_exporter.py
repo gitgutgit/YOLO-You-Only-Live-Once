@@ -37,8 +37,8 @@ class YOLOExporter:
             'path': str(self.base_dir.absolute()),
             'train': 'images/train',
             'val': 'images/train',  # Using train for val for now as we don't have a split yet
-            'nc': 2,
-            'names': ['player', 'obstacle']
+            'nc': 5,
+            'names': ['player', 'meteor', 'star', 'caution_lava', 'exist_lava']
         }
         
         yaml_path = self.base_dir / "data.yaml"
@@ -137,18 +137,43 @@ class YOLOExporter:
         
         lines.append(f"0 {px:.6f} {py:.6f} {pw:.6f} {ph:.6f}")
         
-        # Obstacles (Class 1)
+        # Obstacles (Class 1: Meteor, Class 2: Star)
         for obs in game_state['obstacles']:
             obs_x = obs['x']
             obs_y = obs['y']
             obs_size = obs['size']
+            obs_type = obs.get('type', 'meteor') # Default to meteor if type missing
             
             ox = (obs_x + obs_size / 2) / WIDTH
             oy = (obs_y + obs_size / 2) / HEIGHT
             ow = obs_size / WIDTH
             oh = obs_size / HEIGHT
             
-            lines.append(f"1 {ox:.6f} {oy:.6f} {ow:.6f} {oh:.6f}")
+            class_id = 1 # Default Meteor
+            if obs_type == 'star':
+                class_id = 2
+            
+            lines.append(f"{class_id} {ox:.6f} {oy:.6f} {ow:.6f} {oh:.6f}")
+            
+        # Lava (Class 3: caution_lava, Class 4: exist_lava)
+        lava = game_state.get('lava')
+        if lava:
+            lava_state = lava['state']
+            if lava_state in ['warning', 'active']:
+                l_zone_x = lava['zone_x']
+                l_height = lava['height']
+                l_width = lava['zone_width']
+                
+                # Lava is at the bottom of the screen
+                l_y = HEIGHT - l_height
+                
+                lx = (l_zone_x + l_width / 2) / WIDTH
+                ly = (l_y + l_height / 2) / HEIGHT
+                lw = l_width / WIDTH
+                lh = l_height / HEIGHT
+                
+                class_id = 3 if lava_state == 'warning' else 4
+                lines.append(f"{class_id} {lx:.6f} {ly:.6f} {lw:.6f} {lh:.6f}")
             
         with open(file_path, 'w') as f:
             f.write('\n'.join(lines))

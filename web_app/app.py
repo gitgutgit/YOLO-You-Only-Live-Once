@@ -261,7 +261,13 @@ class Game:
             'player_x': self.player_x,
             'player_y': self.player_y,
             'player_vy': self.player_vy,
-            'obstacles': [{'x': o['x'], 'y': o['y'], 'size': o['size']} for o in self.obstacles[:5]]
+            'obstacles': [{'x': o['x'], 'y': o['y'], 'size': o['size'], 'type': o.get('type', 'meteor')} for o in self.obstacles],
+            'lava': {
+                'state': self.lava_state,
+                'zone_x': self.lava_zone_x,
+                'height': LAVA_CONFIG['height'],
+                'zone_width': LAVA_CONFIG['zone_width']
+            }
         }
         
         # 중력
