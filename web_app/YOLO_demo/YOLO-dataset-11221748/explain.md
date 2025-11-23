@@ -77,4 +77,3 @@ no test
 example: 
 
 yolo detect predict model=best.pt source=images/val/game_20251122_BPrP-O6-_00790.jpg imgsz=640
-
