@@ -8,13 +8,11 @@ Modules Package - Team Collaboration Modules
 - game_engine: 공통 게임 로직 (수정 금지)
 - cv_module: Jeewon Kim (jk4864) - 컴퓨터 비전
 - ai_module: Chloe Lee (cl4490) - AI 정책
-- web_session: Minsuk Kim (mk4434) - 웹 세션 관리
 """
 
 from .game_engine import GameState, GameActions, GameObject, Player, Obstacle
 from .cv_module import ComputerVisionModule, CVDetectionResult
 from .ai_module import AIModule, AIDecisionResult
-from .web_session import WebGameSession, SessionManager
 
 __all__ = [
     # Game Engine (공통)
@@ -31,10 +29,6 @@ __all__ = [
     # AI Module (Chloe)
     'AIModule',
     'AIDecisionResult',
-    
-    # Web Session (Minsuk)
-    'WebGameSession',
-    'SessionManager'
 ]
 
 # 버전 정보
