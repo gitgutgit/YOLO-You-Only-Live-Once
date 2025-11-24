@@ -14,7 +14,7 @@ Prediciton 3,4,5 is the yolov8n.pt model and prediction 1,2 is the best.pt model
 
 
 
-image_path = "images/val/game_20251122_BPrP-O6-_00650.jpg"
+image_path = "images/val/game_20251122_BPrP-O6-_00750.jpg"
 results = model(image_path)   
 
 
