@@ -178,6 +178,11 @@ final_project/
 │       ├── best.pt                  # 훈련된 YOLO 모델
 │       └── yolo_test.py            # YOLO 테스트 스크립트
 │
+├── 📦 Legacy/                        # 사용하지 않는 파일 정리용
+│   ├── Larry/                       # Minsuk의 레거시 파일
+│   ├── Jeewon/                      # Jeewon의 레거시 파일 (비어있음)
+│   └── Chloe/                       # Chloe의 레거시 파일 (비어있음)
+│
 └── 📚 docs/                          # 문서
     ├── AI_MODE_EXPLANATION.md      # AI 모드 동작 원리
     └── web_app/
@@ -234,6 +239,23 @@ python src/training/ppo_trainer.py
 - `web_app/TEAM_GUIDE.md` - 팀원별 모듈 작업 가이드
 - `.agent_context/jeewon_analysis_research_tasks.md` - Jeewon 분석 작업 가이드
 - `Legacy/Larry/RL_TRAINING_GUIDE.md` - Chloe RL 훈련 가이드
+
+## 📦 Legacy 폴더 사용법
+
+**목적**: 더 이상 사용하지 않는 파일들을 팀원별로 정리하는 폴더
+
+**구조**:
+```
+Legacy/
+├── Larry/    # Minsuk의 레거시 파일 (문서, 구버전 스크립트 등)
+├── Jeewon/   # Jeewon의 레거시 파일 (비어있음 - 필요시 사용)
+└── Chloe/    # Chloe의 레거시 파일 (비어있음 - 필요시 사용)
+```
+
+**사용 방법**:
+- 더 이상 사용하지 않는 파일이나 구버전 파일을 본인 폴더로 이동
+- 예: `Legacy/Jeewon/old_yolo_script.py`, `Legacy/Chloe/experiment_notebook.ipynb`
+- Git에 포함되어 팀원들과 공유 가능
 
 ---
 
