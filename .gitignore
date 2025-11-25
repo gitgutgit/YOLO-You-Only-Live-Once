@@ -82,3 +82,7 @@ web_app/data/
 # Temporary files
 *.tmp
 *.temp
+
+# override ignore rule for Chloe's policy models
+!src/models/
+!src/models/*
