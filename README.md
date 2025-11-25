@@ -38,7 +38,7 @@ RGB 프레임 → YOLO 탐지 → MLP 정책 네트워크 → 액션 결정
 
 ---
 
-### 🔴 **Jeewon Kim (jk4864)** - YOLO 객체 탐지 (진행 중)
+### 🔴 **Jeewon Kim (jk4864)** - YOLO 객체 탐지 및 PPO 모델 실험 (진행 중)
 
 **담당 영역**: 컴퓨터 비전, YOLOv8 모델 훈련 및 분석
 
@@ -54,9 +54,9 @@ RGB 프레임 → YOLO 탐지 → MLP 정책 네트워크 → 액션 결정
 
 ---
 
-### 🟣 **Chloe Lee (cl4490)** - PPO/DQN 모델 실험 및 데이터 기반 강화학습 훈련
+### 🟣 **Chloe Lee (cl4490)** - 모델 파인튜닝, 실험 및 데이터 기반 강화학습 훈련 (\*DQN 고려)
 
-**담당 영역**: PPO/DQN 기반 RL 에이전트 훈련
+**담당 영역**: 모델 파인튜닝 및, RL 에이전트 훈련
 
 **현재 상태**: 데이터 수집 완료 (23+ 세션), RL 데이터 형식 준비 완료
 
@@ -81,6 +81,7 @@ src/
 ```
 
 **Import 예시**:
+
 ```python
 # src/models/policy_network.py에서
 from torch import nn
@@ -108,6 +109,7 @@ RL_training/                       # 최상단에 새 폴더
 ```
 
 **Import 예시**:
+
 ```python
 # 프로젝트 루트에서 실행 시
 import sys
@@ -117,9 +119,11 @@ from RL_training.training.ppo_trainer import PPOTrainer
 ```
 
 **데이터 위치**:
+
 - `web_app/collected_gameplay/session_*/states_actions.jsonl` - RL 훈련 데이터
 
 **참고 문서**:
+
 - `Legacy/Larry/RL_TRAINING_GUIDE.md` - RL 훈련 상세 가이드
 - `web_app/modules/ai_module.py` - 통합 모듈 (PolicyNetwork 클래스 이미 정의됨)
 
@@ -202,13 +206,13 @@ python src/training/ppo_trainer.py
 
 ## 🎯 Success Criteria
 
-| 기준                      | 목표                  | 담당자 | 현재 상태         | 중요도      |
-| ------------------------- | --------------------- | ------ | ----------------- | ----------- |
-| **Detection Quality**     | mAP ≥ 70%             | Jeewon | ✅ 모델 훈련 완료 | 🟡 High     |
-| **Imitation Accuracy**    | ≥75% action agreement | Chloe  | ❌ 미시작         | 🟡 High     |
-| **Performance Gain**      | ≥20% survival time ↑  | Chloe  | ❌ 미시작         | 🟡 High     |
-| **Real-time Performance** | ≥60 FPS inference     | All    | ⚠️ 30 FPS (웹)    | 🟡 High     |
-| **Data Collection**       | ≥5,000 frames         | Minsuk | ✅ 500+ frames    | ✅ 완료     |
+| 기준                      | 목표                  | 담당자 | 현재 상태         | 중요도  |
+| ------------------------- | --------------------- | ------ | ----------------- | ------- |
+| **Detection Quality**     | mAP ≥ 70%             | Jeewon | ✅ 모델 훈련 완료 | 🟡 High |
+| **Imitation Accuracy**    | ≥75% action agreement | Chloe  | ❌ 미시작         | 🟡 High |
+| **Performance Gain**      | ≥20% survival time ↑  | Chloe  | ❌ 미시작         | 🟡 High |
+| **Real-time Performance** | ≥60 FPS inference     | All    | ⚠️ 30 FPS (웹)    | 🟡 High |
+| **Data Collection**       | ≥5,000 frames         | Minsuk | ✅ 500+ frames    | ✅ 완료 |
 
 ## 🔗 Important Links
 
