@@ -10,6 +10,7 @@ TODO for Chloe:
 3. 실시간 의사결정 최적화
 4. 자가 학습 (Self-Play) 구현
 """
+from src.models.policy_network import PolicyNetwork, ValueNetwork
 
 import numpy as np
 from typing import Dict, List, Tuple, Optional, Any
@@ -158,6 +159,13 @@ class AIModule:
         self._initialize_model()
     
     def _initialize_model(self):
+
+
+
+
+        self.policy_net = PolicyNetwork().to(self.device)
+        self.value_net = ValueNetwork().to(self.device)
+
         """
         모델 초기화
         
