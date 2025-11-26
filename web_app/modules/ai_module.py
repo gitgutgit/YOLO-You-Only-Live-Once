@@ -4,6 +4,11 @@ AI Module - Reinforcement Learning Policy
 Chloe Lee (cl4490) 담당 모듈
 PPO/DQN 기반 게임 AI 정책
 
+난이도 레벨 시스템:
+- Level 1 (Easy): 간단한 휴리스틱 (기본 회피만)
+- Level 2 (Medium): 고급 휴리스틱 (회피 + 별 수집 전략)
+- Level 3 (Hard): PPO 모델 기반 (없으면 최고급 휴리스틱)
+
 TODO for Chloe:
 1. simulate_ai_decision() → real_ppo_decision() 교체
 2. 정책 네트워크 훈련 및 로드
@@ -16,6 +21,7 @@ import numpy as np
 from typing import Dict, List, Tuple, Optional, Any
 import time
 import random
+from pathlib import Path
 
 # PyTorch는 선택적 (실제 RL 모델 구현 시 필요)
 try:
@@ -482,3 +488,393 @@ if __name__ == "__main__":
     # 성능 통계
     stats = ai_module.get_performance_stats()
     print(f"평균 의사결정 시간: {stats.get('avg_decision_time_ms', 0):.1f}ms")
+
+
+# ============================================================================
+# 난이도 레벨 시스템
+# ============================================================================
+
+class AIStrategy:
+    """AI 전략 베이스 클래스"""
+    
+    def __init__(self, level: int, name: str):
+        self.level = level
+        self.name = name
+    
+    def make_decision(self, game_state: Dict[str, Any]) -> Optional[str]:
+        """의사결정 메서드 (서브클래스에서 구현)"""
+        raise NotImplementedError
+
+
+class Level1Strategy(AIStrategy):
+    """
+    Level 1 (Easy) - 간단한 휴리스틱
+    
+    전략:
+    - 기본적인 메테오 회피만
+    - 별은 무시
+    - 중앙 유지 전략 약함
+    """
+    
+    def __init__(self):
+        super().__init__(level=1, name="Easy")
+        self.DETECTION_RANGE = 200  # 메테오 감지 범위
+        self.DANGER_RANGE = 100     # 위험 판정 범위
+    
+    def make_decision(self, game_state: Dict[str, Any]) -> Optional[str]:
+        """간단한 회피 로직"""
+        player = game_state.get('player', {})
+        obstacles = game_state.get('obstacles', [])
+        
+        player_x = player.get('x', 480)
+        player_y = player.get('y', 360)
+        player_size = player.get('size', 50)
+        player_center_x = player_x + player_size / 2
+        
+        # 가장 가까운 메테오 찾기
+        nearest_meteor = None
+        nearest_dist = float('inf')
+        
+        for obs in obstacles:
+            if obs.get('type') != 'meteor':
+                continue
+            
+            obs_x = obs.get('x', 0)
+            obs_y = obs.get('y', 0)
+            obs_size = obs.get('size', 50)
+            obs_center_x = obs_x + obs_size / 2
+            
+            # 플레이어보다 위쪽에 있고, X축 범위 내
+            if obs_y < player_y:
+                x_overlap = abs(player_center_x - obs_center_x) < self.DETECTION_RANGE
+                if x_overlap:
+                    dist = abs(player_center_x - obs_center_x) + (player_y - obs_y) * 0.5
+                    if dist < nearest_dist:
+                        nearest_dist = dist
+                        nearest_meteor = obs
+        
+        # 메테오 회피
+        if nearest_meteor and nearest_dist < self.DANGER_RANGE:
+            meteor_center_x = nearest_meteor['x'] + nearest_meteor.get('size', 50) / 2
+            
+            # 메테오 반대 방향으로 이동
+            if meteor_center_x < player_center_x:
+                return 'right'
+            else:
+                return 'left'
+        
+        return None  # 행동 없음
+
+
+class Level2Strategy(AIStrategy):
+    """
+    Level 2 (Medium) - 고급 휴리스틱
+    
+    전략:
+    - 메테오 회피 (향상된 로직)
+    - 별 수집 전략
+    - 중앙 유지
+    - 용암 회피
+    """
+    
+    def __init__(self):
+        super().__init__(level=2, name="Medium")
+        self.METEOR_DETECT_RANGE = 250
+        self.METEOR_DANGER_RANGE = 150
+        self.STAR_COLLECT_RANGE = 200
+        self.EMERGENCY_RANGE = 80
+    
+    def make_decision(self, game_state: Dict[str, Any]) -> Optional[str]:
+        """향상된 의사결정 로직"""
+        player = game_state.get('player', {})
+        obstacles = game_state.get('obstacles', [])
+        lava = game_state.get('lava', {})
+        
+        player_x = player.get('x', 480)
+        player_y = player.get('y', 360)
+        player_size = player.get('size', 50)
+        player_center_x = player_x + player_size / 2
+        
+        WIDTH = 960
+        HEIGHT = 720
+        
+        # 가장 가까운 메테오 & 별 찾기
+        nearest_meteor = None
+        nearest_meteor_dist = float('inf')
+        nearest_star = None
+        nearest_star_dist = float('inf')
+        
+        for obs in obstacles:
+            obj_type = obs.get('type', 'meteor')
+            obs_x = obs.get('x', 0)
+            obs_y = obs.get('y', 0)
+            obs_size = obs.get('size', 50)
+            obs_center_x = obs_x + obs_size / 2
+            
+            # X축 중첩 체크
+            x_overlap = abs(player_center_x - obs_center_x) < (player_size + obs_size) / 2 + 50
+            
+            if obj_type == 'meteor':
+                if obs_y < player_y and x_overlap:
+                    dist = abs(player_center_x - obs_center_x) + (player_y - obs_y) * 0.5
+                    if dist < nearest_meteor_dist:
+                        nearest_meteor_dist = dist
+                        nearest_meteor = obs
+            
+            elif obj_type == 'star':
+                if obs_y < player_y + 200:
+                    dist = abs(player_center_x - obs_center_x) + abs(player_y - obs_y) * 0.3
+                    if dist < nearest_star_dist:
+                        nearest_star_dist = dist
+                        nearest_star = obs
+        
+        # 우선순위 1: 긴급 메테오 회피
+        if nearest_meteor and nearest_meteor_dist < self.EMERGENCY_RANGE:
+            # 점프로 회피 시도
+            if player_y >= HEIGHT - player_size - 10:
+                return 'jump'
+        
+        # 우선순위 2: 메테오 회피
+        if nearest_meteor and nearest_meteor_dist < self.METEOR_DANGER_RANGE:
+            meteor_center_x = nearest_meteor['x'] + nearest_meteor.get('size', 50) / 2
+            
+            if meteor_center_x < player_center_x:
+                if player_x + player_size < WIDTH - 20:
+                    return 'right'
+            else:
+                if player_x > 20:
+                    return 'left'
+        
+        # 우선순위 3: 별 수집
+        if nearest_star and nearest_star_dist < self.STAR_COLLECT_RANGE:
+            star_center_x = nearest_star['x'] + nearest_star.get('size', 30) / 2
+            
+            # 별 쪽으로 이동
+            if star_center_x < player_center_x - 15:
+                if player_x > 10:
+                    return 'left'
+            elif star_center_x > player_center_x + 15:
+                if player_x + player_size < WIDTH - 10:
+                    return 'right'
+            
+            # 별이 위쪽에 있으면 점프
+            if nearest_star['y'] < player_y - 50 and player_y >= HEIGHT - player_size - 10:
+                return 'jump'
+        
+        # 우선순위 4: 용암 회피
+        if lava.get('state') in ['warning', 'active']:
+            lava_zone_x = lava.get('zone_x', 0)
+            lava_zone_width = lava.get('zone_width', 320)
+            lava_zone_end = lava_zone_x + lava_zone_width
+            
+            # 플레이어가 용암 영역 안에 있으면
+            if player_x + player_size > lava_zone_x and player_x < lava_zone_end:
+                # 가장 가까운 안전 구역으로 이동
+                if player_center_x < WIDTH / 2:
+                    if player_x > 20:
+                        return 'left'
+                else:
+                    if player_x + player_size < WIDTH - 20:
+                        return 'right'
+        
+        # 우선순위 5: 중앙 유지
+        center_x = WIDTH / 2
+        if player_center_x < center_x - 100:
+            if player_x + player_size < WIDTH - 20:
+                return 'right'
+        elif player_center_x > center_x + 100:
+            if player_x > 20:
+                return 'left'
+        
+        return None
+
+
+class Level3Strategy(AIStrategy):
+    """
+    Level 3 (Hard) - PPO 모델 기반
+    
+    전략:
+    - 학습된 PPO 모델 사용 (models/rl/ppo_agent.pt)
+    - 모델이 없으면 최고급 휴리스틱으로 폴백
+    """
+    
+    def __init__(self, model_path: Optional[str] = None):
+        super().__init__(level=3, name="Hard (PPO)")
+        self.model_path = model_path
+        self.ppo_model = None
+        self.fallback_strategy = Level2Strategy()  # 폴백용 전략
+        
+        # PPO 모델 로드 시도
+        self._load_ppo_model()
+    
+    def _load_ppo_model(self):
+        """PPO 모델 로드"""
+        if not self.model_path:
+            print("⚠️ Level 3: PPO 모델 경로 없음, 휴리스틱으로 폴백")
+            return
+        
+        try:
+            model_file = Path(self.model_path)
+            if not model_file.exists():
+                print(f"⚠️ Level 3: PPO 모델 파일 없음 ({self.model_path}), 휴리스틱으로 폴백")
+                return
+            
+            # PyTorch 모델 로드 시도
+            if TORCH_AVAILABLE:
+                import torch
+                self.ppo_model = torch.load(self.model_path, map_location='cpu')
+                self.ppo_model.eval()
+                print(f"✅ Level 3: PPO 모델 로드 성공 ({self.model_path})")
+            else:
+                print("⚠️ Level 3: PyTorch 없음, 휴리스틱으로 폴백")
+        
+        except Exception as e:
+            print(f"⚠️ Level 3: PPO 모델 로드 실패 ({e}), 휴리스틱으로 폴백")
+            self.ppo_model = None
+    
+    def make_decision(self, game_state: Dict[str, Any]) -> Optional[str]:
+        """PPO 모델 또는 폴백 전략"""
+        # PPO 모델이 있으면 사용
+        if self.ppo_model is not None:
+            try:
+                return self._ppo_decision(game_state)
+            except Exception as e:
+                print(f"⚠️ Level 3: PPO 추론 오류 ({e}), 휴리스틱으로 폴백")
+        
+        # 폴백: Level 2 전략 사용
+        return self.fallback_strategy.make_decision(game_state)
+    
+    def _ppo_decision(self, game_state: Dict[str, Any]) -> Optional[str]:
+        """
+        PPO 모델 기반 의사결정
+        
+        TODO for Chloe: 실제 PPO 추론 구현
+        """
+        # TODO: 게임 상태를 PPO 입력 형식으로 변환
+        # state_vector = self._encode_state(game_state)
+        
+        # TODO: PPO 추론
+        # with torch.no_grad():
+        #     action_probs = self.ppo_model(state_vector)
+        #     action_idx = torch.argmax(action_probs).item()
+        
+        # TODO: 행동 매핑
+        # actions = [None, 'jump', 'left', 'right']
+        # return actions[action_idx]
+        
+        # 임시: 폴백 사용
+        return self.fallback_strategy.make_decision(game_state)
+
+
+class Level4Strategy(AIStrategy):
+    """
+    Level 4 (Expert) - Ensemble 모델
+    
+    전략:
+    - PPO + Vision 기반 앙상블
+    - 여러 모델의 의사결정을 결합
+    - 가장 높은 성능 목표
+    """
+    
+    def __init__(self, ppo_model_path: Optional[str] = None, dqn_model_path: Optional[str] = None):
+        super().__init__(level=4, name="Expert (Ensemble)")
+        self.ppo_strategy = Level3Strategy(model_path=ppo_model_path)
+        self.base_strategy = Level2Strategy()
+        self.dqn_model_path = dqn_model_path
+        self.dqn_model = None
+        
+        # DQN 모델 로드 시도 (선택적)
+        self._load_dqn_model()
+    
+    def _load_dqn_model(self):
+        """DQN 모델 로드 (선택적)"""
+        if not self.dqn_model_path:
+            return
+        
+        try:
+            model_file = Path(self.dqn_model_path)
+            if not model_file.exists():
+                print(f"⚠️ Level 4: DQN 모델 파일 없음 ({self.dqn_model_path})")
+                return
+            
+            if TORCH_AVAILABLE:
+                import torch
+                self.dqn_model = torch.load(self.dqn_model_path, map_location='cpu')
+                self.dqn_model.eval()
+                print(f"✅ Level 4: DQN 모델 로드 성공 ({self.dqn_model_path})")
+        
+        except Exception as e:
+            print(f"⚠️ Level 4: DQN 모델 로드 실패 ({e})")
+            self.dqn_model = None
+    
+    def make_decision(self, game_state: Dict[str, Any]) -> Optional[str]:
+        """앙상블 의사결정"""
+        # 여러 전략의 결정을 수집
+        decisions = []
+        
+        # PPO 전략
+        ppo_action = self.ppo_strategy.make_decision(game_state)
+        if ppo_action:
+            decisions.append(('ppo', ppo_action, 0.5))  # 가중치 0.5
+        
+        # 휴리스틱 전략
+        heuristic_action = self.base_strategy.make_decision(game_state)
+        if heuristic_action:
+            decisions.append(('heuristic', heuristic_action, 0.3))  # 가중치 0.3
+        
+        # DQN 전략 (있으면)
+        if self.dqn_model is not None:
+            # TODO: DQN 추론 구현
+            # dqn_action = self._dqn_decision(game_state)
+            # decisions.append(('dqn', dqn_action, 0.2))
+            pass
+        
+        # 가중치 기반 투표
+        if not decisions:
+            return None
+        
+        # 간단한 앙상블: 가장 높은 가중치의 행동 선택
+        # 실제 구현에서는 더 정교한 앙상블 방법 사용 가능
+        decisions.sort(key=lambda x: x[2], reverse=True)
+        return decisions[0][1]
+
+
+class AILevelManager:
+    """AI 난이도 레벨 관리자"""
+    
+    def __init__(self, ppo_model_path: Optional[str] = None, dqn_model_path: Optional[str] = None):
+        """
+        초기화
+        
+        Args:
+            ppo_model_path: Level 3, 4에서 사용할 PPO 모델 경로
+            dqn_model_path: Level 4에서 사용할 DQN 모델 경로 (선택적)
+        """
+        self.strategies = {
+            1: Level1Strategy(),
+            2: Level2Strategy(),
+            3: Level3Strategy(model_path=ppo_model_path),
+            4: Level4Strategy(ppo_model_path=ppo_model_path, dqn_model_path=dqn_model_path)
+        }
+        self.current_level = 1
+    
+    def set_level(self, level: int):
+        """난이도 레벨 설정"""
+        if level not in self.strategies:
+            raise ValueError(f"Invalid level: {level}. Must be 1, 2, 3, or 4.")
+        self.current_level = level
+        print(f"🎮 AI 난이도: Level {level} ({self.strategies[level].name})")
+    
+    def make_decision(self, game_state: Dict[str, Any]) -> Optional[str]:
+        """현재 레벨의 전략으로 의사결정"""
+        strategy = self.strategies[self.current_level]
+        return strategy.make_decision(game_state)
+    
+    def get_level_info(self) -> Dict[str, Any]:
+        """현재 레벨 정보 반환"""
+        strategy = self.strategies[self.current_level]
+        return {
+            'level': self.current_level,
+            'name': strategy.name,
+            'description': f"Level {self.current_level}: {strategy.name}"
+        }

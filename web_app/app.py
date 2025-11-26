@@ -24,6 +24,9 @@ from storage_manager import get_storage_manager
 # CV Module for Vision-based Lava Detection
 from modules.cv_module import ComputerVisionModule
 
+# AI Module for Difficulty Levels
+from modules.ai_module import AILevelManager
+
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'game-secret'
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
@@ -34,18 +37,23 @@ HEIGHT = 720
 PLAYER_SIZE = 50
 OBSTACLE_SIZE = 50
 
-# RL 모델 플래그 (클로가 나중에 학습시킬 모델)
-RL_MODEL_AVAILABLE = False
-RL_MODEL = None
+# AI 난이도 레벨 관리자 초기화
+# 모델 경로 (환경 변수 또는 기본 경로)
+project_root = Path(__file__).parent.parent
+ppo_model_path = os.getenv('PPO_MODEL_PATH', str(project_root / 'web_app' / 'models' / 'rl' / 'ppo_agent.pt'))
+dqn_model_path = os.getenv('DQN_MODEL_PATH', str(project_root / 'web_app' / 'models' / 'rl' / 'dqn_agent.pt'))
 
-try:
-    # PyTorch 모델 로드 시도 (아직 없음)
-    # import torch
-    # RL_MODEL = torch.load('models/rl_agent.pth')
-    # RL_MODEL_AVAILABLE = True
-    print("⚠️ RL 모델 없음 - 휴리스틱 AI 사용")
-except Exception as e:
-    print(f"⚠️ RL 모델 로드 실패: {e}")
+# AI Level Manager 생성
+ai_level_manager = AILevelManager(
+    ppo_model_path=ppo_model_path if Path(ppo_model_path).exists() else None,
+    dqn_model_path=dqn_model_path if Path(dqn_model_path).exists() else None
+)
+
+print("🤖 AI 난이도 레벨 시스템 초기화")
+print(f"   - Level 1: Easy (간단한 휴리스틱)")
+print(f"   - Level 2: Medium (고급 휴리스틱)")
+print(f"   - Level 3: Hard (PPO 모델 또는 폴백)")
+print(f"   - Level 4: Expert (Ensemble 모델)")
 
 # 객체 타입 정의 (메테오 = 떨어지는 장애물, 별 = 보상 아이템)
 OBJECT_TYPES = {
@@ -218,6 +226,10 @@ class Game:
         project_root = Path(__file__).parent.parent
         yolo_model_path = os.getenv('YOLO_MODEL_PATH', str(project_root / 'AI_model' / 'best_112217.pt'))
         self.cv_module = ComputerVisionModule(model_path=yolo_model_path)
+        
+        # AI 난이도 레벨 (기본값: 1)
+        self.ai_level = 1
+        
         self.reset()
         
     def reset(self):
@@ -577,113 +589,21 @@ def encode_game_state(game):
 
 def ai_decision(game):
     """
-    AI 에이전트의 의사결정 로직
+    AI 에이전트의 의사결정 로직 (난이도 레벨별)
     
-    우선순위:
-    1. RL 모델 사용 (학습된 모델이 있으면)
-    2. 휴리스틱 정책 (기본 전략)
-    
-    전략:
-    1. 가장 가까운 메테오 회피
-    2. 가까운 별 수집
-    3. 안전 구역 유지
+    난이도 레벨:
+    - Level 1 (Easy): 간단한 휴리스틱 (기본 회피만)
+    - Level 2 (Medium): 고급 휴리스틱 (회피 + 별 수집)
+    - Level 3 (Hard): PPO 모델 기반 (없으면 최고급 휴리스틱)
     """
-    # RL 모델이 있으면 사용
-    if RL_MODEL_AVAILABLE and RL_MODEL is not None:
-        try:
-            state = encode_game_state(game)
-            # import torch
-            # with torch.no_grad():
-            #     state_tensor = torch.FloatTensor(state).unsqueeze(0)
-            #     action_probs = RL_MODEL(state_tensor)
-            #     action_idx = torch.argmax(action_probs).item()
-            #     actions = ['stay', 'left', 'right', 'jump']
-            #     return actions[action_idx] if action_idx > 0 else None
-            pass
-        except Exception as e:
-            print(f"⚠️ RL 모델 추론 오류: {e}")
+    # AI 레벨에 따른 의사결정
+    ai_level_manager.set_level(game.ai_level)
     
-    # 휴리스틱 정책 (기본)
-    player_x = game.player_x
-    player_y = game.player_y
-    player_center_x = player_x + PLAYER_SIZE / 2
+    # 게임 상태를 AI 모듈 형식으로 변환
+    game_state = game.get_state()
     
-    # 위협 분석
-    nearest_meteor = None
-    nearest_meteor_dist = float('inf')
-    nearest_star = None
-    nearest_star_dist = float('inf')
-    
-    for obs in game.obstacles:
-        obj_type = obs.get('type', 'meteor')
-        obs_x = obs['x']
-        obs_y = obs['y']
-        obs_size = obs.get('size', OBSTACLE_SIZE)
-        obs_center_x = obs_x + obs_size / 2
-        
-        # 충돌 예상 범위 (플레이어와 x축 중첩)
-        x_overlap = abs(player_center_x - obs_center_x) < (PLAYER_SIZE + obs_size) / 2 + 50
-        
-        if obj_type == 'meteor':
-            # 메테오가 플레이어 위쪽에 있고 접근 중
-            if obs_y < player_y and x_overlap:
-                dist = abs(player_center_x - obs_center_x) + (player_y - obs_y) * 0.5
-                if dist < nearest_meteor_dist:
-                    nearest_meteor_dist = dist
-                    nearest_meteor = obs
-        
-        elif obj_type == 'star':
-            # 별이 획득 가능한 범위
-            if obs_y < player_y + 200:
-                dist = abs(player_center_x - obs_center_x) + abs(player_y - obs_y) * 0.3
-                if dist < nearest_star_dist:
-                    nearest_star_dist = dist
-                    nearest_star = obs
-    
-    # 의사결정 우선순위
-    action = None
-    
-    # 1. 위급 상황: 메테오 회피
-    if nearest_meteor and nearest_meteor_dist < 150:
-        meteor_center_x = nearest_meteor['x'] + nearest_meteor.get('size', OBSTACLE_SIZE) / 2
-        
-        # 메테오가 왼쪽에서 오면 오른쪽으로, 오른쪽에서 오면 왼쪽으로
-        if meteor_center_x < player_center_x:
-            if player_x + PLAYER_SIZE < WIDTH - 20:
-                action = 'right'
-        else:
-            if player_x > 20:
-                action = 'left'
-        
-        # 긴급 상황: 점프로 회피 시도
-        if nearest_meteor_dist < 80 and player_y >= HEIGHT - PLAYER_SIZE - 10:
-            action = 'jump'
-    
-    # 2. 기회 포착: 별 수집
-    elif nearest_star and nearest_star_dist < 200:
-        star_center_x = nearest_star['x'] + nearest_star.get('size', 30) / 2
-        
-        # 별 쪽으로 이동
-        if star_center_x < player_center_x - 15:
-            if player_x > 10:
-                action = 'left'
-        elif star_center_x > player_center_x + 15:
-            if player_x + PLAYER_SIZE < WIDTH - 10:
-                action = 'right'
-        
-        # 별이 위쪽에 있으면 점프
-        if nearest_star['y'] < player_y - 50 and player_y >= HEIGHT - PLAYER_SIZE - 10:
-            action = 'jump'
-    
-    # 3. 기본 행동: 중앙 유지 (좌우 이동 범위 확보)
-    else:
-        center_x = WIDTH / 2
-        if player_center_x < center_x - 100:
-            if player_x + PLAYER_SIZE < WIDTH - 20:
-                action = 'right'
-        elif player_center_x > center_x + 100:
-            if player_x > 20:
-                action = 'left'
+    # AI 의사결정
+    action = ai_level_manager.make_decision(game_state)
     
     return action
 
@@ -799,15 +719,18 @@ def on_start_game(data):
     game.reset()
     game.mode = data.get('mode', 'human')
     game.player_name = data.get('player_name', None)  # 플레이어 이름 저장
+    game.ai_level = data.get('ai_level', 2)  # AI 난이도 레벨 (기본값: 2)
     game.running = True
     
     # 플레이어 이름 설정 (AI면 자동 생성)
     if game.mode == 'ai':
-        game.player_name = f"AI-Bot-{sid[:6]}"
+        level_names = {1: "Easy", 2: "Medium", 3: "Hard", 4: "Expert"}
+        level_name = level_names.get(game.ai_level, "Medium")
+        game.player_name = f"AI-{level_name}-{sid[:6]}"
     elif not game.player_name:
         game.player_name = f"Player-{sid[:6]}"
     
-    print(f"🚀 게임 시작: {sid}, 모드: {game.mode}, 플레이어: {game.player_name}")
+    print(f"🚀 게임 시작: {sid}, 모드: {game.mode}, 플레이어: {game.player_name}, AI 레벨: {game.ai_level}")
     
     # 게임 루프 시작
     thread = threading.Thread(target=game_loop, args=(sid,))
@@ -874,7 +797,8 @@ def on_frame_capture(data):
         print(f"❌ 프레임 저장 오류: {e}")
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5001))
+    # 포트 설정: 환경변수 PORT 또는 기본값 5002 (5001이 사용 중일 수 있음)
+    port = int(os.environ.get('PORT', 5002))
     debug = os.environ.get('DEBUG', 'True') == 'True'
     env_mode = os.environ.get('ENVIRONMENT', 'development')
     

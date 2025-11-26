@@ -482,6 +482,154 @@
             background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
             color: white;
         }
+        
+        /* AI 난이도 레벨 선택 모달 */
+        .difficulty-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(10px);
+            z-index: 1001;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .difficulty-modal.active {
+            display: flex;
+        }
+        
+        .difficulty-content {
+            background: white;
+            border-radius: 24px;
+            padding: 40px;
+            max-width: 600px;
+            width: 90%;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            animation: modalSlideIn 0.3s ease-out;
+        }
+        
+        .difficulty-content h3 {
+            font-size: 32px;
+            font-weight: 700;
+            margin-bottom: 12px;
+            text-align: center;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        
+        .difficulty-content p {
+            text-align: center;
+            color: #666;
+            margin-bottom: 32px;
+            font-size: 16px;
+        }
+        
+        .difficulty-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        
+        .difficulty-btn {
+            background: linear-gradient(135deg, #f5f7fa, #ffffff);
+            border: 2px solid #e1e8ed;
+            border-radius: 16px;
+            padding: 24px;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            text-align: left;
+        }
+        
+        .difficulty-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.2);
+            border-color: #667eea;
+        }
+        
+        .difficulty-btn.level1 {
+            background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
+            border-color: #a8edea;
+        }
+        
+        .difficulty-btn.level2 {
+            background: linear-gradient(135deg, #ffeaa7 0%, #fdcb6e 100%);
+            border-color: #ffeaa7;
+        }
+        
+        .difficulty-btn.level3 {
+            background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
+            border-color: #ff6b6b;
+            color: white;
+        }
+        
+        .difficulty-btn.level4 {
+            background: linear-gradient(135deg, #a29bfe 0%, #6c5ce7 100%);
+            border-color: #a29bfe;
+            color: white;
+        }
+        
+        .difficulty-btn .icon {
+            font-size: 42px;
+            min-width: 50px;
+            text-align: center;
+        }
+        
+        .difficulty-btn .info {
+            flex: 1;
+        }
+        
+        .difficulty-btn .level-name {
+            font-size: 22px;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+        
+        .difficulty-btn.level3 .level-name {
+            color: white;
+        }
+        
+        .difficulty-btn.level4 .level-name {
+            color: white;
+        }
+        
+        .difficulty-btn .level-desc {
+            font-size: 14px;
+            color: #666;
+        }
+        
+        .difficulty-btn.level3 .level-desc {
+            color: rgba(255, 255, 255, 0.9);
+        }
+        
+        .difficulty-btn.level4 .level-desc {
+            color: rgba(255, 255, 255, 0.9);
+        }
+        
+        .difficulty-modal-close {
+            background: #e1e8ed;
+            border: none;
+            border-radius: 12px;
+            padding: 12px 24px;
+            margin-top: 24px;
+            width: 100%;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            color: #333;
+            transition: all 0.3s;
+        }
+        
+        .difficulty-modal-close:hover {
+            background: #cbd5e0;
+        }
 
         .mode-btn:hover {
             transform: translateY(-4px);
@@ -863,6 +1011,50 @@
             </div>
         </div>
         
+        <!-- AI 난이도 레벨 선택 모달 -->
+        <div id="difficultyModal" class="difficulty-modal">
+            <div class="difficulty-content">
+                <h3>🤖 Choose AI Difficulty</h3>
+                <p>Select the challenge level for the AI opponent</p>
+                
+                <div class="difficulty-buttons">
+                    <button class="difficulty-btn level1" data-level="1">
+                        <span class="icon">😊</span>
+                        <div class="info">
+                            <div class="level-name">Level 1: Easy</div>
+                            <div class="level-desc">Basic heuristic - Simple meteor avoidance only</div>
+                        </div>
+                    </button>
+                    
+                    <button class="difficulty-btn level2" data-level="2">
+                        <span class="icon">😎</span>
+                        <div class="info">
+                            <div class="level-name">Level 2: Medium</div>
+                            <div class="level-desc">Advanced heuristic - Meteor avoidance + star collection</div>
+                        </div>
+                    </button>
+                    
+                    <button class="difficulty-btn level3" data-level="3">
+                        <span class="icon">🔥</span>
+                        <div class="info">
+                            <div class="level-name">Level 3: Hard</div>
+                            <div class="level-desc">PPO Model-based AI (or advanced heuristic fallback)</div>
+                        </div>
+                    </button>
+                    
+                    <button class="difficulty-btn level4" data-level="4">
+                        <span class="icon">⭐</span>
+                        <div class="info">
+                            <div class="level-name">Level 4: Expert</div>
+                            <div class="level-desc">Ensemble AI (PPO + DQN + Heuristics)</div>
+                        </div>
+                    </button>
+                </div>
+                
+                <button class="difficulty-modal-close" onclick="closeDifficultyModal()">Cancel</button>
+            </div>
+        </div>
+        
         <!-- 가상 컨트롤 토글 버튼 -->
         <button class="virtual-control-toggle" id="virtualControlToggle" onclick="toggleVirtualControls()">
             <span id="toggleIcon">🎮</span>
@@ -958,6 +1150,45 @@
         function cancelPlayerName() {
             const modal = document.getElementById('playerNameModal');
             modal.classList.remove('show');
+            pendingGameMode = null;
+        }
+        
+        // ============================================================================
+        // AI 난이도 선택 모달
+        // ============================================================================
+        
+        function showDifficultyModal(mode) {
+            pendingGameMode = mode;
+            const modal = document.getElementById('difficultyModal');
+            modal.classList.add('active');
+            
+            // 난이도 버튼 클릭 이벤트
+            const difficultyButtons = document.querySelectorAll('.difficulty-btn');
+            difficultyButtons.forEach(btn => {
+                btn.onclick = function() {
+                    const level = parseInt(this.getAttribute('data-level'));
+                    selectDifficulty(level);
+                };
+            });
+        }
+        
+        function selectDifficulty(level) {
+            const modal = document.getElementById('difficultyModal');
+            modal.classList.remove('active');
+            
+            console.log(`🎮 AI 난이도 선택: Level ${level}`);
+            
+            // AI 모드로 게임 시작 (난이도 레벨 포함)
+            if (window.gameClient && pendingGameMode) {
+                window.gameClient.actuallyStartGame(pendingGameMode, null, level);
+            }
+            
+            pendingGameMode = null;
+        }
+        
+        function closeDifficultyModal() {
+            const modal = document.getElementById('difficultyModal');
+            modal.classList.remove('active');
             pendingGameMode = null;
         }
         
@@ -1224,22 +1455,24 @@
                 if (mode === 'human') {
                     showPlayerNameModal(mode);
                 } else {
-                    // AI 모드는 바로 시작
-                    this.actuallyStartGame(mode, null);
+                    // AI 모드는 난이도 선택 모달 표시
+                    showDifficultyModal(mode);
                 }
             }
             
-            actuallyStartGame(mode, name) {
+            actuallyStartGame(mode, name, aiLevel = 2) {
                 this.playerName = name;
                 
                 console.log(`🚀 ${mode} 모드로 게임 시작 요청`);
                 console.log(`👤 플레이어 이름: ${name || 'AI'}`);
+                console.log(`🤖 AI 난이도: ${aiLevel}`);
                 console.log(`📡 Socket 연결 상태: ${this.socket.connected}`);
                 console.log(`📤 start_game 이벤트 전송 중...`);
                 
                 this.socket.emit('start_game', { 
                     mode: mode,
-                    player_name: name
+                    player_name: name,
+                    ai_level: aiLevel
                 }, (response) => {
                     console.log('✅ start_game 이벤트 전송 완료! 응답:', response);
                 });
