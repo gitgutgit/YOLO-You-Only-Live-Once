@@ -68,10 +68,32 @@ def compute_iou(boxA, boxB):
 def ensure_dir(p):
     os.makedirs(p, exist_ok=True)
 
+#기존에 이미지만복사해서 나온 에러 때문에 라벨추가중 (ing)
+
 def save_copy(image_path, case):
-    dst = os.path.join(OUTPUT_DIR, case)
-    ensure_dir(dst)
-    shutil.copy(image_path, dst)
+    # 1) images/<case> 폴더
+    img_dst = os.path.join(OUTPUT_DIR, case, "images")
+    lbl_dst = os.path.join(OUTPUT_DIR, case, "labels")
+
+    os.makedirs(img_dst, exist_ok=True)
+    os.makedirs(lbl_dst, exist_ok=True)
+
+    # ---------------------
+    #  Copy image
+    # ---------------------
+    shutil.copy(image_path, img_dst)
+
+    # ---------------------
+    #  Copy label
+    # ---------------------
+    label_path = image_path.replace("/images/", "/labels/").rsplit(".", 1)[0] + ".txt"
+
+    if os.path.exists(label_path):
+        shutil.copy(label_path, lbl_dst)
+    else:
+        print(f"⚠️  WARNING: label not found for {image_path}")
+
+
 
 def save_visual(img, pred_boxes, gt_boxes, save_path):
     vis = img.copy()
