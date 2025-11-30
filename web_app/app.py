@@ -3,7 +3,9 @@
 import os
 import time
 import base64
+import json
 from datetime import datetime
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -51,6 +53,10 @@ player_name = None
 # 데이터 수집 카운터
 collected_states_count = 0
 collected_images_count = 0
+
+# 데이터 수집 리스트 (게임 상태 저장용)
+collected_states = []  # [{frame, state, action, reward, done}, ...]
+collected_bboxes = []  # [{frame, objects: [...]}, ...]
 
 # action 확률 (AI 모드일 때)
 last_action_probs = None
@@ -282,6 +288,97 @@ def build_state_payload(state_dict, time_elapsed: float):
     return payload
 
 # ==========================
+# 데이터 수집 및 저장
+# ==========================
+
+def save_gameplay_data(session_id: str, mode: str, player_name: str, score: float, survival_time: float):
+    """
+    게임플레이 데이터를 collected_gameplay/ 디렉토리에 저장
+    
+    저장 형식:
+    - metadata.json: 세션 메타데이터
+    - states_actions.jsonl: State-Action-Reward 시퀀스 (클로용)
+    - bboxes.jsonl: 바운딩 박스 라벨 (제이용)
+    """
+    global collected_states, collected_bboxes
+    
+    if len(collected_states) == 0:
+        print("⚠️ 수집된 데이터가 없어 저장하지 않습니다.")
+        return
+    
+    # 세션 디렉토리 생성
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    session_dir = Path(BASE_DIR) / "collected_gameplay" / f"session_{timestamp}_{mode}"
+    session_dir.mkdir(parents=True, exist_ok=True)
+    
+    # 1. 메타데이터 저장
+    metadata = {
+        "session_id": session_id or f"session_{timestamp}",
+        "mode": mode,
+        "score": score,
+        "survival_time": survival_time,
+        "total_frames": len(collected_states),
+        "final_state": {
+            "player_x": collected_states[-1]["state"].get("player", {}).get("x", 0) if collected_states else 0,
+            "player_y": collected_states[-1]["state"].get("player", {}).get("y", 0) if collected_states else 0,
+            "obstacles_count": len(collected_states[-1]["state"].get("obstacles", [])) if collected_states else 0
+        },
+        "timestamp": datetime.now().isoformat(),
+        "player_name": player_name or ("AI" if mode == "ai" else "Unknown")
+    }
+    
+    metadata_file = session_dir / "metadata.json"
+    with open(metadata_file, 'w', encoding='utf-8') as f:
+        json.dump(metadata, f, indent=2, ensure_ascii=False)
+    
+    # 2. State-Action-Reward 저장 (JSONL 포맷 - 클로용)
+    states_file = session_dir / "states_actions.jsonl"
+    with open(states_file, 'w', encoding='utf-8') as f:
+        for state_record in collected_states:
+            f.write(json.dumps(state_record, ensure_ascii=False) + '\n')
+    
+    # 3. Bounding Box 라벨 저장 (JSONL 포맷 - 제이용)
+    bboxes_file = session_dir / "bboxes.jsonl"
+    with open(bboxes_file, 'w', encoding='utf-8') as f:
+        for bbox_record in collected_bboxes:
+            f.write(json.dumps(bbox_record, ensure_ascii=False) + '\n')
+    
+    print(f"📊 게임플레이 데이터 저장 완료:")
+    print(f"   - 디렉토리: {session_dir.name}")
+    print(f"   - State-Action 로그: {len(collected_states)}개")
+    print(f"   - Bbox 라벨: {len(collected_bboxes)}개")
+    print(f"   - 모드: {mode}")
+    print(f"   - 점수: {score}")
+    print(f"   - 생존 시간: {survival_time:.2f}초")
+    
+    # 4. YOLO 데이터셋으로 내보내기 (제이용)
+    try:
+        from yolo_exporter import YOLOExporter
+        from storage_manager import get_storage_manager
+        
+        exporter = YOLOExporter(base_dir="game_dataset")
+        storage = get_storage_manager()
+        
+        # 프레임이 저장된 경로 찾기
+        # storage_manager.py에 따르면: local_data_dir / 'gameplay' / 'frames' / date_folder / session_id[:8]
+        date_folder = datetime.now().strftime("%Y-%m-%d")
+        frames_dir = storage.local_data_dir / 'gameplay' / 'frames' / date_folder / (session_id[:8] if session_id else "unknown")
+        
+        if frames_dir.exists():
+            # collected_states를 yolo_exporter 형식으로 변환
+            # yolo_exporter는 {frame, state} 형식을 기대함
+            exporter.export_session(session_id or f"session_{timestamp}", collected_states, frames_dir)
+            print(f"✅ YOLO 데이터셋 export 완료: {frames_dir}")
+        else:
+            print(f"⚠️ 프레임 디렉토리를 찾을 수 없음: {frames_dir}")
+            print(f"   → 프레임 이미지가 저장되지 않았을 수 있습니다.")
+            
+    except Exception as e:
+        print(f"❌ YOLO Export 실패: {e}")
+        import traceback
+        traceback.print_exc()
+
+# ==========================
 # 게임 루프 (백그라운드 태스크)
 # ==========================
 
@@ -293,6 +390,7 @@ def game_loop():
     global game_running, last_action, pending_jump
     global collected_states_count, last_action_probs
     global start_time, game, current_mode, player_name
+    global collected_states, collected_bboxes
 
     fps = 30.0
     dt = 1.0 / fps
@@ -355,6 +453,43 @@ def game_loop():
         # 🔧 버그 수정: lava timer는 game_core.py에서 이미 계산되어 있음
         # 추가 처리 불필요
 
+        # 📊 데이터 수집: 게임 상태 저장
+        frame_num = state_dict.get("frame", 0)
+        collected_states.append({
+            "frame": frame_num,
+            "state": state_dict,
+            "action": action,
+            "reward": reward,
+            "done": done
+        })
+        
+        # 📊 데이터 수집: 바운딩 박스 정보 저장
+        objects = []
+        # 플레이어 bbox
+        if "player" in state_dict:
+            player = state_dict["player"]
+            objects.append({
+                "class": "player",
+                "x": player.get("x", 0),
+                "y": player.get("y", 0),
+                "w": player.get("size", 50),
+                "h": player.get("size", 50)
+            })
+        # 장애물 bbox
+        if "obstacles" in state_dict:
+            for obs in state_dict["obstacles"]:
+                objects.append({
+                    "class": obs.get("type", "obstacle"),
+                    "x": obs.get("x", 0),
+                    "y": obs.get("y", 0),
+                    "w": obs.get("size", 50),
+                    "h": obs.get("size", 50)
+                })
+        collected_bboxes.append({
+            "frame": frame_num,
+            "objects": objects
+        })
+
         # 3) 시간 계산
         time_elapsed = time.time() - start_time
 
@@ -395,6 +530,9 @@ def game_loop():
                 "date": datetime.now().isoformat(),
             }
             leaderboard.append(entry)
+            
+            # 📊 데이터 수집: 게임 종료 시 파일로 저장
+            save_gameplay_data(current_sid, current_mode, player_name, final_score, final_time)
 
             # 상위 50개까지만 유지
             if len(leaderboard) > 50:
@@ -452,6 +590,7 @@ def on_start_game(data):
     global game, game_running, current_mode, current_ai_level
     global last_action, pending_jump, start_time, player_name
     global collected_states_count, collected_images_count, last_action_probs
+    global collected_states, collected_bboxes
     global current_sid
 
     mode = data.get("mode", "human")
@@ -475,6 +614,8 @@ def on_start_game(data):
     player_name = name if mode == "human" else None
     collected_states_count = 0
     collected_images_count = 0
+    collected_states = []
+    collected_bboxes = []
     last_action_probs = None
     start_time = time.time()
 
@@ -526,7 +667,7 @@ def on_frame_capture(data):
     index.html에서 10프레임마다 보내는 캔버스 이미지.
     data: { image: 'data:image/png;base64,...', frame: int }
     """
-    global collected_images_count
+    global collected_images_count, current_sid
 
     img_data = data.get("image")
     frame_idx = data.get("frame", 0)
@@ -544,16 +685,17 @@ def on_frame_capture(data):
         print(f"⚠️ Failed to decode frame image: {e}")
         return
 
-    # 원하면 디스크에 저장해서 오프라인 학습용으로 쓸 수 있음
-    # 여기서는 그냥 카운터만 증가
-    collected_images_count += 1
-
-    # 예: ./collected_frames/frame_000123.png 로 저장하고 싶다면:
-    # save_dir = os.path.join(BASE_DIR, "collected_frames")
-    # os.makedirs(save_dir, exist_ok=True)
-    # filename = os.path.join(save_dir, f"frame_{frame_idx:06d}.png")
-    # with open(filename, "wb") as f:
-    #     f.write(img_bytes)
+    # 📸 프레임 이미지 저장 (YOLO 학습용)
+    # storage_manager를 사용하여 프레임 저장
+    try:
+        from storage_manager import get_storage_manager
+        storage = get_storage_manager()
+        saved_path = storage.save_frame_image(img_bytes, current_sid or "unknown", frame_idx)
+        if saved_path:
+            collected_images_count += 1
+    except Exception as e:
+        print(f"⚠️ 프레임 저장 실패: {e}")
+        collected_images_count += 1  # 카운트는 증가
 
 
 # ==========================
