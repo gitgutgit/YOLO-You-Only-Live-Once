@@ -20,7 +20,6 @@ wheels/
 .installed.cfg
 *.egg
 MANIFEST
-
 # PyTorch
 *.pth
 runs
@@ -57,7 +56,6 @@ data/raw/
 data/processed/
 logs/
 checkpoints/
-models/
 *.onnx
 *.trt
 
@@ -82,3 +80,13 @@ web_app/data/
 # Temporary files
 *.tmp
 *.temp
+
+
+
+
+AI_model/
+c_answer.md
+d_answer.md
+e_answer.md
+f_answer.md
+PHASE2_SUMMARY.md
