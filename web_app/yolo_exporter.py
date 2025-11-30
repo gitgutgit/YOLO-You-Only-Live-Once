@@ -33,8 +33,10 @@ class YOLOExporter:
         
     def _create_data_yaml(self):
         """Creates the data.yaml file required by YOLO."""
+        # Use relative path (.) so data.yaml works regardless of where the project is located
+        # This ensures compatibility across different computer environments
         data = {
-            'path': str(self.base_dir.absolute()),
+            'path': '.',  # Relative path - data.yaml is in the dataset root directory
             'train': 'images/train',
             'val': 'images/train',  # Using train for val for now as we don't have a split yet
             'nc': 5,

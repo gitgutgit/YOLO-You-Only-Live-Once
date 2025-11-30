@@ -5,6 +5,6 @@ names:
 - caution_lava
 - exist_lava
 nc: 5
-path: /Users/aidesigner/Columbia Univ Course/deeplearningvision4995/final_project/web_app/game_dataset
+path: .
 train: images/train
 val: images/train
