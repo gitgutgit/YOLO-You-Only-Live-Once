@@ -1,0 +1,23 @@
+EDGE-CASE FOLDER STRUCTURE
+==========================
+
+This file explains the structure created by auto_edge_case_finder.py.
+
+edge_case_auto/
+    false_positive/
+        - Images where the model predicted something that does NOT actually exist
+    false_negative/
+        - Images where the ground-truth object exists but the model failed to detect it
+    misclassified/
+        - Images where the model detected the object but predicted the WRONG class
+    low_iou/
+        - Images where class was correct but IoU is below threshold (default 0.5)
+
+Each folder contains images copied from your dataset that represent problematic YOLO predictions.
+
+You can inspect these images to understand:
+    - Where the model struggles
+    - What patterns cause errors
+    - Which cases require more training data
+
+This helps improve model robustness and create real "edge-case training sets."
