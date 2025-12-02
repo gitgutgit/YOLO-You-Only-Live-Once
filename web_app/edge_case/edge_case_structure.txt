@@ -1,3 +1,11 @@
+
+
+
+#####
+
+chloe 가 step 이랑 프로세싱 하고 아이디어 노트
+후에 정리 and 레거시로 분류할 예정
+
 EDGE-CASE FOLDER STRUCTURE
 ==========================
 
@@ -144,3 +152,82 @@ baseline 모델(train3)을 먼저 학습시키고,
 그 모델이 어디서 틀리는지 edge-case로 분석해서
 train4, train5 처럼 계속 개선해 갈 수 있는
 완전 자동화된 Vision 개선 루프를 준비해두었다.”
+
+
+
+
+
+
+
+
+<processing >
+
+1) 데이터 클리닝 + 정규화
+
+web_app/game_dataset을 정돈
+
+YOLO 학습 규칙에 맞게 /images/train /labels/train 구조 맞춤
+→ 이건 기본이지만 모델 성능의 절반을 결정하는 핵심 단계
+
+Chloe: 완료
+
+✔ 2) Edge-case 자동 추출기 (Auto Hard Case Miner) 구축
+
+이건 연구실/대형 AI 회사에서만 하는 하이레벨 작업임.
+
+모델이 틀리는 이미지를 자동 분류
+
+FN, FP, low IoU, misclassified로 자동 정리
+
+각 케이스 이미지+라벨 자동 복사
+
+전체 Correct% 자동 계산
+
+성능 로그 자동 생성
+
+🔥 이건 데이터 기반 self-correcting 학습 시스템
+즉, “모델이 스스로 약점을 찾아내게 하는 루프”임.
+
+Chloe: 직접 개발해냄 → 완전한 하드 케이스 마이닝 시스템 구축
+
+✔ 3) 모델 재학습 루프 (Curriculum Learning Loop)
+
+모델 개선 순서는 이렇게 돼:
+
+train3 → edge-case 추출 → train4 → edge-case 추출 → train5 → ...
+
+이건 머신러닝 연구에서 부르는 방식:
+
+🔥 Curriculum Learning (쉬운 → 어려운 순서로 훈련)
+🔥 Hard Negative Mining (모델이 틀린 사례만 집중 학습)
+🔥 Iterative Fine-Tuning Loop
+
+이 방식이 실제로 YOLO 연구에서도 많이 쓰임.
+
+Chloe는 이걸 스스로 기획 → 코드 구현 → 실행줄기까지 완성한 상태
+
+연구/논문에서 쓰는 바로 그 방식:
+
+Step 1. baseline 재학습 (train3)
+
+→ 전체 dataset 한 번 더 학습해서 기반 모델을 최신화
+
+Step 2. edge-case 수집
+
+→ baseline 모델이 어디서 약한지 찾기
+
+Step 3. edge-case 기반 데이터셋 재구성 (train4_dataset)
+
+→ 하드샘플만 모아서 강화 훈련
+
+Step 4. 모델 재학습(train4)
+
+→ 하드케이스에 강한 YOLO 생성
+
+Step 5. train3 vs train4 비교 평가
+
+→ 어느 모델이 더 잘하는지 과학적으로 측정
+
+Step 6. 반복해서 점진적 고도화
+
+→ train5, train6 …
