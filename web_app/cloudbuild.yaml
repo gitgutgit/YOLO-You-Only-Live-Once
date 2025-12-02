@@ -33,7 +33,7 @@ steps:
         "--timeout",
         "300",
         "--port",
-        "5000",
+        "8080",
         "--set-env-vars",
         "ENVIRONMENT=production,GCS_BUCKET_NAME=distilled-vision-game-data",
       ]

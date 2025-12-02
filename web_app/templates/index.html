@@ -1137,6 +1137,7 @@
                 this.particles = [];  // ⭐ 파티클 효과용
                 this.playerName = null;  // 플레이어 이름
                 this.lastStarCollected = false;  // 🔧 버그 수정: 별 획득 플래그 추적
+                this.showDetections = true;  // 👁️ YOLO Detection 박스 표시 여부
 
                 // 키보드 상태
                 this.keys = {
@@ -1239,6 +1240,11 @@
                 });
 
                 this.socket.on('game_update', (data) => {
+                    // show_detections 플래그 동기화
+                    if (typeof data.show_detections !== 'undefined') {
+                        this.showDetections = data.show_detections;
+                    }
+                    
                     // 상세한 데이터 로깅 (첫 3개만)
                     if (this.isRunning && (!this.lastLogTime || Date.now() - this.lastLogTime > 1000)) {
                         console.log('📦 게임 상태 수신 (game_update):', {
@@ -1258,6 +1264,14 @@
                     // CV 모델 훈련용 데이터 수집
                     if (this.gameState.frame % 10 === 0) {
                         this.captureFrame();
+                    }
+                });
+
+                // 👁️ Detection 토글 상태 동기화
+                this.socket.on('detection_toggled', (data) => {
+                    if (typeof data.show_detections !== 'undefined') {
+                        this.showDetections = data.show_detections;
+                        console.log(`👁️ YOLO detections: ${this.showDetections ? 'ON' : 'OFF'}`);
                     }
                 });
 
@@ -1353,6 +1367,7 @@
                 // YOLO Detection Toggle (G)
                 if (e.key === 'g' || e.key === 'G') {
                     this.socket.emit('toggle_detections');
+                    // 서버에서 상태 업데이트를 받을 때까지 기다림 (detection_toggled 이벤트)
                 }
             }
 
@@ -1819,8 +1834,8 @@
                 // 이전 상태 저장 (중복 생성 방지)
                 this.lastStarCollected = this.gameState.star_collected || false;
 
-                // 👁️ YOLO 감지 박스 렌더링 (서버에서 보낸 경우)
-                if (this.gameState.detections) {
+                // 👁️ YOLO 감지 박스 렌더링 (show_detections 플래그 확인)
+                if (this.showDetections && this.gameState.detections && this.gameState.detections.length > 0) {
                     this.renderDetections(this.gameState.detections);
                 }
             }

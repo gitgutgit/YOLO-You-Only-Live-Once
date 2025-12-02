@@ -8,15 +8,33 @@ from datetime import datetime
 from pathlib import Path
 
 import numpy as np
-import torch
-from ultralytics import YOLO
+
+# Optional ML dependencies (graceful degradation)
+try:
+    import torch
+    TORCH_AVAILABLE = True
+except ImportError:
+    TORCH_AVAILABLE = False
+    print("⚠️ PyTorch not available - AI features disabled")
+
+try:
+    from ultralytics import YOLO
+    YOLO_AVAILABLE = True
+except ImportError:
+    YOLO_AVAILABLE = False
+    print("⚠️ Ultralytics not available - YOLO detection disabled")
 
 from flask import Flask, send_from_directory, jsonify
 from flask_socketio import SocketIO, emit
 
-from game_core import GameCore
+from game_core import GameCore, WIDTH, HEIGHT, PLAYER_SIZE
 from state_encoder import encode_state, ACTION_LIST, STATE_DIM
-from ppo.agent import PPOAgent
+
+# PPO agent only if torch is available
+if TORCH_AVAILABLE:
+    from ppo.agent import PPOAgent
+else:
+    PPOAgent = None
 
 # ==========================
 # 기본 설정
@@ -37,6 +55,7 @@ socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 # 전역 객체들 (main에서 초기화)
 yolo_model = None
 ppo_agent = None
+ai_level_manager = None  # AI 레벨 관리자
 
 game = None
 game_running = False
@@ -263,6 +282,7 @@ def build_state_payload(state_dict, time_elapsed: float):
     frame = int(state_dict.get("frame", 0))
     score = int(state_dict.get("score", 0))
 
+    global show_detections
     payload = {
         "player": player_payload,
         "obstacles": obstacles_payload,
@@ -278,7 +298,9 @@ def build_state_payload(state_dict, time_elapsed: float):
         # 🎯 점수 시스템 개선: 세부 점수 정보
         "time_score": int(state_dict.get("time_score", 0)),
         "star_score": int(state_dict.get("star_score", 0)),
-        "dodged_meteors": int(state_dict.get("dodged_meteors", 0))
+        "dodged_meteors": int(state_dict.get("dodged_meteors", 0)),
+        # 👁️ YOLO Detection 토글 상태
+        "show_detections": show_detections
     }
 
     # 5) PPO action probs (AI 모드에서만)
@@ -379,6 +401,148 @@ def save_gameplay_data(session_id: str, mode: str, player_name: str, score: floa
         traceback.print_exc()
 
 # ==========================
+# AI 레벨별 휴리스틱 함수
+# ==========================
+
+def _level1_heuristic(game_state: dict) -> str:
+    """
+    Level 1: 간단한 휴리스틱 (메테오 회피만)
+    """
+    player = game_state.get('player', {})
+    obstacles = game_state.get('obstacles', [])
+    
+    player_x = player.get('x', 480)
+    player_y = player.get('y', 360)
+    player_size = player.get('size', 50)
+    player_center_x = player_x + player_size / 2
+    
+    # 가장 가까운 메테오 찾기
+    nearest_meteor = None
+    nearest_dist = float('inf')
+    
+    for obs in obstacles:
+        if obs.get('type') != 'meteor':
+            continue
+        
+        obs_x = obs.get('x', 0)
+        obs_y = obs.get('y', 0)
+        obs_size = obs.get('size', 50)
+        obs_center_x = obs_x + obs_size / 2
+        
+        if obs_y < player_y:  # 위에서 오는 메테오만
+            x_overlap = abs(player_center_x - obs_center_x) < 200
+            if x_overlap:
+                dist = abs(player_center_x - obs_center_x) + (player_y - obs_y) * 0.5
+                if dist < nearest_dist:
+                    nearest_dist = dist
+                    nearest_meteor = obs
+    
+    # 메테오 회피
+    if nearest_meteor and nearest_dist < 100:
+        meteor_center_x = nearest_meteor['x'] + nearest_meteor.get('size', 50) / 2
+        if meteor_center_x < player_center_x:
+            return 'right'
+        else:
+            return 'left'
+    
+    return 'stay'
+
+
+def _level3_heuristic(game_state: dict) -> str:
+    """
+    Level 3: 고급 휴리스틱 (메테오 회피 + 별 수집 + 라바 피하기)
+    """
+    player = game_state.get('player', {})
+    obstacles = game_state.get('obstacles', [])
+    lava = game_state.get('lava', {})
+    
+    player_x = player.get('x', 480)
+    player_y = player.get('y', 360)
+    player_size = player.get('size', 50)
+    player_center_x = player_x + player_size / 2
+    player_vy = player.get('vy', 0)
+    on_ground = player_y >= HEIGHT - player_size - 10
+    
+    # Priority 1: 라바 피하기
+    lava_state = lava.get('state', 'inactive')
+    if lava_state == 'active':
+        lava_zone_x = lava.get('zone_x', 0)
+        lava_zone_width = lava.get('zone_width', 320)
+        lava_center_x = lava_zone_x + lava_zone_width / 2
+        
+        if abs(player_center_x - lava_center_x) < 200:
+            if lava_center_x < player_center_x:
+                return 'right'
+            else:
+                return 'left'
+    
+    # Priority 2: 메테오 회피
+    nearest_meteor = None
+    nearest_dist = float('inf')
+    
+    for obs in obstacles:
+        if obs.get('type') != 'meteor':
+            continue
+        
+        obs_x = obs.get('x', 0)
+        obs_y = obs.get('y', 0)
+        obs_size = obs.get('size', 50)
+        obs_center_x = obs_x + obs_size / 2
+        
+        if obs_y < player_y:
+            x_overlap = abs(player_center_x - obs_center_x) < 200
+            if x_overlap:
+                dist = abs(player_center_x - obs_center_x) + (player_y - obs_y) * 0.5
+                if dist < nearest_dist:
+                    nearest_dist = dist
+                    nearest_meteor = obs
+    
+    if nearest_meteor and nearest_dist < 150:
+        meteor_center_x = nearest_meteor['x'] + nearest_meteor.get('size', 50) / 2
+        if meteor_center_x < player_center_x:
+            return 'right'
+        elif meteor_center_x > player_center_x:
+            return 'left'
+        elif on_ground:
+            return 'jump'
+    
+    # Priority 3: 별 수집
+    nearest_star = None
+    nearest_star_dist = float('inf')
+    
+    for obs in obstacles:
+        if obs.get('type') != 'star':
+            continue
+        
+        obs_x = obs.get('x', 0)
+        obs_y = obs.get('y', 0)
+        obs_center_x = obs_x + obs.get('size', 30) / 2
+        
+        dist = np.sqrt((player_center_x - obs_center_x)**2 + (player_y - obs_y)**2)
+        if dist < nearest_star_dist:
+            nearest_star_dist = dist
+            nearest_star = obs
+    
+    if nearest_star and nearest_star_dist < 200:
+        star_center_x = nearest_star['x'] + nearest_star.get('size', 30) / 2
+        if abs(star_center_x - player_center_x) > 20:
+            if star_center_x < player_center_x:
+                return 'left'
+            else:
+                return 'right'
+        elif on_ground and star_center_x - player_center_x < 50:
+            return 'jump'
+    
+    # Priority 4: 중앙 유지
+    if player_center_x < 300:
+        return 'right'
+    elif player_center_x > 660:
+        return 'left'
+    
+    return 'stay'
+
+
+# ==========================
 # 게임 루프 (백그라운드 태스크)
 # ==========================
 
@@ -418,7 +582,7 @@ def game_loop():
             collected_states_count += 1
 
         else:  # AI 모드
-            # GameCore 렌더 → YOLO → state encoding → PPO
+            # GameCore 렌더 → YOLO → state encoding
             frame_rgb = game.render()
             det_state, det_client = run_yolo_on_frame(frame_rgb)
 
@@ -426,21 +590,72 @@ def game_loop():
             game_state = game._get_state()
             state_vec = encode_state(det_state, game_state)
 
-            # PPO 액션 선택 (eval)
+            # 레벨별 AI 의사결정
+            action = "stay"
+            action_probs = None
+            
             try:
-                # action index
-                action_idx = ppo_agent.select_action_eval(state_vec)
-                action = ACTION_LIST[action_idx]
-
-                # action probs (policy_old 통해 추출)
-                with torch.no_grad():
-                    s = torch.FloatTensor(state_vec).unsqueeze(0)
-                    if next(ppo_agent.policy_old.parameters()).is_cuda:
-                        s = s.cuda()
-                    probs_tensor = ppo_agent.policy_old(s)
-                    action_probs = probs_tensor.cpu().numpy()[0].tolist()
+                if current_ai_level == 1:
+                    # Level 1: 간단한 휴리스틱 (메테오 회피만)
+                    action = _level1_heuristic(game_state)
+                    
+                elif current_ai_level == 2:
+                    # Level 2: PPO 모델
+                    if ppo_agent is not None and TORCH_AVAILABLE:
+                        try:
+                            action_idx = ppo_agent.select_action_eval(state_vec)
+                            action = ACTION_LIST[action_idx]
+                            
+                            # action probs 추출
+                            with torch.no_grad():
+                                s = torch.FloatTensor(state_vec).unsqueeze(0)
+                                if next(ppo_agent.policy_old.parameters()).is_cuda:
+                                    s = s.cuda()
+                                probs_tensor = ppo_agent.policy_old(s)
+                                action_probs = probs_tensor.cpu().numpy()[0].tolist()
+                        except Exception as e:
+                            print(f"⚠️ Level 2 PPO error: {e}")
+                            action = _level1_heuristic(game_state)
+                    else:
+                        action = _level1_heuristic(game_state)
+                        
+                elif current_ai_level == 3:
+                    # Level 3: PPO + 고급 휴리스틱 (별 수집 우선)
+                    if ppo_agent is not None and TORCH_AVAILABLE:
+                        try:
+                            action_idx = ppo_agent.select_action_eval(state_vec)
+                            action = ACTION_LIST[action_idx]
+                        except Exception as e:
+                            print(f"⚠️ Level 3 PPO error: {e}")
+                            action = _level3_heuristic(game_state)
+                    else:
+                        action = _level3_heuristic(game_state)
+                        
+                elif current_ai_level == 4:
+                    # Level 4: PPO (최고 성능)
+                    if ppo_agent is not None and TORCH_AVAILABLE:
+                        try:
+                            action_idx = ppo_agent.select_action_eval(state_vec)
+                            action = ACTION_LIST[action_idx]
+                            
+                            # action probs 추출
+                            with torch.no_grad():
+                                s = torch.FloatTensor(state_vec).unsqueeze(0)
+                                if next(ppo_agent.policy_old.parameters()).is_cuda:
+                                    s = s.cuda()
+                                probs_tensor = ppo_agent.policy_old(s)
+                                action_probs = probs_tensor.cpu().numpy()[0].tolist()
+                        except Exception as e:
+                            print(f"⚠️ Level 4 PPO error: {e}")
+                            action = _level3_heuristic(game_state)
+                    else:
+                        action = _level3_heuristic(game_state)
+                else:
+                    # 기본: Level 1
+                    action = _level1_heuristic(game_state)
+                    
             except Exception as e:
-                print(f"⚠️ PPO action selection error: {e}")
+                print(f"⚠️ AI decision error (level {current_ai_level}): {e}")
                 action = "stay"
                 action_probs = None
 
@@ -501,9 +716,12 @@ def game_loop():
 
         payload = build_state_payload(state_dict, time_elapsed)
 
-        # AI 모드일 때 YOLO 결과 client에 전달
+        # AI 모드일 때 YOLO 결과 client에 전달 (show_detections 플래그 확인)
         if current_mode == "ai":
-            payload["detections"] = det_client
+            if show_detections:
+                payload["detections"] = det_client
+            else:
+                payload["detections"] = []  # 빈 배열로 보내서 토글 기능 지원
 
         # 5) 클라이언트로 전송
         if state_dict.get("frame", 0) % 30 == 0:
@@ -659,6 +877,8 @@ def on_toggle_detections():
     global show_detections
     show_detections = not show_detections
     print(f"👁️ YOLO detections {'ON' if show_detections else 'OFF'}")
+    # 클라이언트에 토글 상태 전송
+    socketio.emit("detection_toggled", {"show_detections": show_detections}, namespace='/')
 
 
 @socketio.on("frame_capture")
@@ -703,11 +923,29 @@ def on_frame_capture(data):
 # ==========================
 
 if __name__ == "__main__":
-    print("✅ Loading YOLO model:", YOLO_MODEL_PATH)
-    yolo_model = YOLO(YOLO_MODEL_PATH)
+    # YOLO 모델 로드
+    if YOLO_AVAILABLE:
+        try:
+            print("✅ Loading YOLO model:", YOLO_MODEL_PATH)
+            yolo_model = YOLO(YOLO_MODEL_PATH)
+        except Exception as e:
+            print(f"⚠️ YOLO model loading failed: {e}")
+            yolo_model = None
+    else:
+        yolo_model = None
+        print("⚠️ YOLO not available")
 
-    print("✅ Loading PPO model:", PPO_MODEL_PATH)
-    ppo_agent = load_ppo_for_web(PPO_MODEL_PATH)
+    # PPO 모델 로드
+    if TORCH_AVAILABLE and PPOAgent is not None:
+        try:
+            print("✅ Loading PPO model:", PPO_MODEL_PATH)
+            ppo_agent = load_ppo_for_web(PPO_MODEL_PATH)
+        except Exception as e:
+            print(f"⚠️ PPO model loading failed: {e}")
+            ppo_agent = None
+    else:
+        ppo_agent = None
+        print("⚠️ PPO not available - using heuristics only")
 
     # Flask+SocketIO 서버 실행
     # 포트 5001 사용 (macOS ControlCenter가 5000 사용 중)
