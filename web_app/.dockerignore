@@ -1,0 +1,53 @@
+# Training dataset - not needed for deployment
+game_dataset/images/**
+game_dataset/labels/**
+YOLO_demo/**
+*.jpg
+*.png
+*.jpeg
+
+# Logs and temporary files
+*.log
+server.log
+server.pid
+server_output.log
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environment
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Git
+.git/
+.gitignore
+
+# Documentation (optional - can include if needed)
+*.md
+README.md
+
+# Test files
+test/
+tests/
+*_test.py
+
+# Development files
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Data collection (can be excluded if not needed)
+data/**
+
