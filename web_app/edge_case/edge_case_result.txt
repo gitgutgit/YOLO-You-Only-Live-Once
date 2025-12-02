@@ -1,0 +1,77 @@
+Train 2
+
+
+DONE!
+=================================
+Total images:        1765
+Correct:             613
+False Negative:      1786
+False Positive:      455
+Misclassified:       192
+Low IoU:             1065
+=================================
+Correct %: 34.73
+=================================
+
+
+>>object box unit -> count image only
+
+Train 3
+
+
+YOLO train3 test report (2025-12-02 04:10)
+Model: ../../runs/detect/train3_cpu/weights/best.pt
+
+Total images: 1765
+Correct: 671
+False Negative: 260
+False Positive: 64
+Misclassified: 29
+Low IoU: 741
+
+Correct %: 38.02%
+
+train4_dataset created at:
+../YOLO_demo/train4/train4_dataset
+
+
+
+Train 4:
+(Train3에서 correct한 데이터를 제외한 모든 데이터 학습)
+
+(venv) jooyeonlee@Chloes-MBP-6 YOLO-You-Only-Live-Once % yolo detect train \
+    model=/Users/jooyeonlee/Project/Yolo_project/YOLO-You-Only-Live-Once/runs/detect/train3_cpu/weights/best.pt \
+    data=/Users/jooyeonlee/Project/Yolo_project/YOLO-You-Only-Live-Once/YOLO_demo/train4/train4_data.yaml \
+    epochs=20 \
+    name=train4
+
+
+
+YOLO train4 test report (2025-12-02 05:27)
+Model: ../../runs/detect/train4/weights/best.pt
+
+Total images: 1765
+Correct: 672
+False Negative: 238
+False Positive: 56
+Misclassified: 45
+Low IoU: 754
+
+Correct %: 38.07%
+
+Train 5:
+same dataset with train3 (1766 total)
+
+(venv) jooyeonlee@Chloes-MBP-6 YOLO-You-Only-Live-Once % yolo detect train \
+    model=runs/detect/train4/weights/best.pt \
+    data=/Users/jooyeonlee/Project/Yolo_project/YOLO-You-Only-Live-Once/web_app/game_dataset/data.yaml \
+    epochs=20 \
+    name=train5
+
+
+    
+
+train2: 34.73
+Train3: 38.02%
+Train4: 38.07%
+Train5: 

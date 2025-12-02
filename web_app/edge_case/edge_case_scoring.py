@@ -2,16 +2,20 @@ import os
 import glob
 import csv
 from ultralytics import YOLO
-import numpy as np
 from prettytable import PrettyTable
 
 
 # ======== CONFIG ========
-EDGE_CASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# 🔥 edge_case_auto 내부만 평가하도록 정확히 지정
+EDGE_CASE_DIR = os.path.join(BASE_DIR, "edge_case_auto")
+
 MODEL_PATHS = [
     "../../runs/detect/train2/weights/best.pt",
-    "../yolov8n.pt"
+    "../yolo_finetuned.pt"
 ]
+
 OUTPUT_CSV = "edge_case_results.csv"
 IOU_THRESHOLD = 0.5
 # ==========================
@@ -19,19 +23,14 @@ IOU_THRESHOLD = 0.5
 
 def iou(boxA, boxB):
     """Compute IoU for two boxes: [x_center, y_center, w, h] (normalized)."""
-    # Convert from center to xyxy
+
     def to_xyxy(box):
         x, y, w, h = box
-        x1 = x - w / 2
-        y1 = y - h / 2
-        x2 = x + w / 2
-        y2 = y + h / 2
-        return x1, y1, x2, y2
+        return (x - w/2, y - h/2, x + w/2, y + h/2)
 
     A = to_xyxy(boxA)
     B = to_xyxy(boxB)
 
-    # Intersection box
     x1 = max(A[0], B[0])
     y1 = max(A[1], B[1])
     x2 = min(A[2], B[2])
@@ -52,65 +51,65 @@ def load_labels(label_path):
     """Load YOLO txt file: cls x y w h."""
     if not os.path.exists(label_path):
         return []
+
     labels = []
     with open(label_path, "r") as f:
         for line in f:
             parts = line.strip().split()
-            cls = int(parts[0])
-            box = list(map(float, parts[1:]))
-            labels.append((cls, box))
+            labels.append((int(parts[0]), list(map(float, parts[1:]))))
     return labels
 
 
 def score_image(model, img_path):
-    """Run YOLO and compare with ground truth labels."""
-    # Load ground truth
-    txt_path = img_path.replace(".jpg", ".txt").replace(".png", ".txt")
+    """Run YOLO and compare with GT (labels)."""
+    
+    txt_path = img_path.replace("/images/", "/labels/")
+    txt_path = txt_path.rsplit(".", 1)[0] + ".txt"   # change .jpg → .txt
+
     gt = load_labels(txt_path)
 
-    # YOLO inference
     pred = model(img_path)[0]
 
     pred_boxes = []
     for box in pred.boxes:
         cls = int(box.cls[0])
-        xywhn = box.xywhn[0].tolist()   # normalized
+        xywhn = box.xywhn[0].tolist()
         pred_boxes.append((cls, xywhn))
 
-    # Score comparison
     matched = 0
     for gt_cls, gt_box in gt:
         for pred_cls, pred_box in pred_boxes:
-            if pred_cls == gt_cls:
-                if iou(gt_box, pred_box) >= IOU_THRESHOLD:
-                    matched += 1
-                    break
+            if pred_cls == gt_cls and iou(gt_box, pred_box) >= IOU_THRESHOLD:
+                matched += 1
+                break
 
     recall = matched / len(gt) if len(gt) > 0 else 1.0
     return recall, len(gt), len(pred_boxes)
 
 
 def collect_edge_images():
-    """Return list of all edge-case image paths."""
+    """Collect all images ONLY in edge_case_auto/*/images/ folders."""
+    
     patterns = [
-        os.path.join(EDGE_CASE_DIR, "**", "*.jpg"),
-        os.path.join(EDGE_CASE_DIR, "**", "*.png")
+        os.path.join(EDGE_CASE_DIR, "*", "images", "*.jpg"),
+        os.path.join(EDGE_CASE_DIR, "*", "images", "*.png"),
     ]
-    paths = []
+
+    all_paths = []
     for p in patterns:
-        paths.extend(glob.glob(p, recursive=True))
-    return sorted(paths)
+        all_paths.extend(glob.glob(p, recursive=False))
+    return sorted(all_paths)
 
 
 def main():
     edge_images = collect_edge_images()
+    
     if len(edge_images) == 0:
         print("❌ No edge-case images found.")
         return
 
     print(f"🔥 Found {len(edge_images)} edge-case images.")
 
-    # Prepare CSV
     with open(OUTPUT_CSV, "w", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(["model", "image", "recall", "gt_count", "pred_count"])
@@ -132,11 +131,12 @@ def main():
             avg_recall = sum(recalls) / len(recalls)
             summary.append((model_path, avg_recall))
 
-    # Summary table
+    # Output table
     table = PrettyTable()
     table.field_names = ["Model", "Avg Recall"]
     for m, r in summary:
         table.add_row([m, f"{r:.3f}"])
+
     print("\n🎯 FINAL SUMMARY")
     print(table)
 

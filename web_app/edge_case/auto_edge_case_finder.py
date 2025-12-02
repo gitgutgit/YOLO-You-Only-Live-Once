@@ -1,201 +1,305 @@
+"""
+==============================================================
+ Automated Edge Case Miner & Next-Train Dataset Builder
+ Chloe Lee | Distilled-Vision-Agent Project | 2025
+==============================================================
+
+Description:
+    This script evaluates a YOLO detection model on the full
+    game dataset and automatically extracts all "hard examples"
+    (False Negative, False Positive, Misclassification, Low IoU).
+    These samples are saved into categorized folders and are
+    also used to build the next training dataset (train4, train5, ...).
+
+    This script implements an automated Hard Example Mining
+    pipeline used for iterative model improvement.
+
+--------------------------------------------------------------
+Usage:
+    1. Set MODEL_PATH to the YOLO model you want to evaluate.
+    2. Set TRAINX_DIR and TRAIN(X+1)_DIR depending on the stage.
+       (Ex: If evaluating train3 → set TRAIN3_DIR and TRAIN4_DIR)
+    3. Run:
+           python auto_edge_case_finder.py
+    4. After running:
+        - edge_case_auto/         → categorized mistake folders
+        - train4_dataset/         → YOLO-ready dataset
+        - train4_summary.txt      → evaluation summary
+        - edge_log.txt (append)   → stores all past evaluations
+
+--------------------------------------------------------------
+Input Structure:
+    ../game_dataset/
+        images/train/
+        images/val/
+        labels/train/
+        labels/val/
+
+Output Structure:
+    YOLO_demo/train4/
+        edge_case_auto/
+            false_negative/
+            false_positive/
+            low_iou/
+            misclassified/
+            correct/   (only if SAVE_CORRECT=True)
+        train4_dataset/
+            images/train/
+            images/val/
+            labels/train/
+            labels/val/
+
+--------------------------------------------------------------
+Edge Case Rules:
+    - False Positive:
+          Prediction has IoU < 0.01 with all GT boxes.
+    - Misclassified:
+          Predicted class != GT class.
+    - Low IoU:
+          IoU exists but < IOU_THRESHOLD (default: 0.5).
+    - False Negative:
+          GT exists but detector failed to detect it.
+    - Correct:
+          High IoU + correct class + no GT missed.
+
+--------------------------------------------------------------
+Training Dataset Rule:
+    - Only incorrect cases (FN, FP, Low IoU, Misclassified)
+      are included in train4_dataset.
+    - Correct predictions are excluded by default.
+
+--------------------------------------------------------------
+How to create next dataset (train5, train6, ...):
+    To generate train5 after evaluating train4:
+        - Update MODEL_PATH → runs/detect/train4/weights/best.pt
+        - Update TRAIN4_DIR → YOLO_demo/train4
+        - Update TRAIN5_DIR → YOLO_demo/train5
+        - Update dataset folder name to train5_dataset
+
+--------------------------------------------------------------
+Automatic Logging:
+    Every run appends a new entry to:
+        YOLO_demo/trainX/edge_case_auto/edge_log.txt
+    This file builds an evaluation history across all models.
+
+--------------------------------------------------------------
+Notes:
+    - Supports safe incremental training.
+    - Compatible with CPU execution on Apple M-series.
+    - Designed for student projects, reproducibility, and clarity.
+
+==============================================================
+"""
+
+
+
 import os
 import shutil
+from datetime import datetime
 from ultralytics import YOLO
 import cv2
-import numpy as np
 
 # ------------------------------------
 # CONFIG
 # ------------------------------------
 
-MODEL_PATH = "../../runs/detect/train2/weights/best.pt"
+# 🔥 [1] 모델 경로(train3 best.pt)
+MODEL_PATH = "../../runs/detect/train4/weights/best.pt"
+
+# 🔥 [2] 기존 게임 데이터셋 경로
 IMAGES_DIR = "../game_dataset/images"
 LABELS_DIR = "../game_dataset/labels"
 
-OUTPUT_DIR = "edge_case_auto"
-SAVE_CORRECT = True          # 정상 케이스도 저장할지 여부
-SAVE_VISUAL = False          # bbox 시각화 이미지 저장 여부
+# 🔥 [3] train5 작업 폴더
+TRAIN3_DIR = "../YOLO_demo/train4"
+TRAIN4_DIR = "../YOLO_demo/train5"
+
+EDGE_DIR = os.path.join(TRAIN4_DIR, "edge_case_auto")
+TRAIN4_DATASET = os.path.join(TRAIN4_DIR, "train4_dataset")
 
 IOU_THRESHOLD = 0.5
 CONF_THRESHOLD = 0.25
+SAVE_CORRECT = False     # train4_dataset에는 correct 포함하지 않음
 
 
 # ------------------------------------
 # Utilities
 # ------------------------------------
 
-def get_all_images(root):
-    """Recursively get all images in both train/val folders."""
-    for dirpath, _, filenames in os.walk(root):
-        for f in filenames:
-            if f.lower().endswith((".jpg", ".png", ".jpeg")):
-                yield os.path.join(dirpath, f)
+def ensure(p):
+    os.makedirs(p, exist_ok=True)
 
-def load_yolo_labels(label_path):
-    labels = []
-    if not os.path.exists(label_path):
-        return labels
-    with open(label_path, "r") as f:
+def list_images(root):
+    for dp, _, files in os.walk(root):
+        for f in files:
+            if f.lower().endswith((".jpg", ".png", ".jpeg")):
+                yield os.path.join(dp, f)
+
+def load_label(path):
+    boxes = []
+    if not os.path.exists(path):
+        return boxes
+    with open(path, "r") as f:
         for line in f:
             parts = line.strip().split()
             if len(parts) == 5:
                 cls, xc, yc, w, h = map(float, parts)
-                labels.append([int(cls), xc, yc, w, h])
-    return labels
+                boxes.append([int(cls), xc, yc, w, h])
+    return boxes
 
-def yolo_to_xyxy(box, img_w, img_h):
+def yolo_to_xyxy(box, W, H):
     cls, xc, yc, w, h = box
-    x1 = int((xc - w/2) * img_w)
-    y1 = int((yc - h/2) * img_h)
-    x2 = int((xc + w/2) * img_w)
-    y2 = int((yc + h/2) * img_h)
+    x1 = int((xc - w/2) * W)
+    y1 = int((yc - h/2) * H)
+    x2 = int((xc + w/2) * W)
+    y2 = int((yc + h/2) * H)
     return cls, x1, y1, x2, y2
 
-def compute_iou(boxA, boxB):
-    xA = max(boxA[0], boxB[0])
-    yA = max(boxA[1], boxB[1])
-    xB = min(boxA[2], boxB[2])
-    yB = min(boxA[3], boxB[3])
-    inter_w = max(0, xB - xA)
-    inter_h = max(0, yB - yA)
-    inter_area = inter_w * inter_h
-    boxA_area = (boxA[2]-boxA[0]) * (boxA[3]-boxA[1])
-    boxB_area = (boxB[2]-boxB[0]) * (boxB[3]-boxB[1])
-    if boxA_area == 0 or boxB_area == 0:
-        return 0
-    return inter_area / (boxA_area + boxB_area - inter_area)
-
-def ensure_dir(p):
-    os.makedirs(p, exist_ok=True)
-
-#기존에 이미지만복사해서 나온 에러 때문에 라벨추가중 (ing)
-
-def save_copy(image_path, case):
-    # 1) images/<case> 폴더
-    img_dst = os.path.join(OUTPUT_DIR, case, "images")
-    lbl_dst = os.path.join(OUTPUT_DIR, case, "labels")
-
-    os.makedirs(img_dst, exist_ok=True)
-    os.makedirs(lbl_dst, exist_ok=True)
-
-    # ---------------------
-    #  Copy image
-    # ---------------------
-    shutil.copy(image_path, img_dst)
-
-    # ---------------------
-    #  Copy label
-    # ---------------------
-    label_path = image_path.replace("/images/", "/labels/").rsplit(".", 1)[0] + ".txt"
-
-    if os.path.exists(label_path):
-        shutil.copy(label_path, lbl_dst)
-    else:
-        print(f"⚠️  WARNING: label not found for {image_path}")
+def iou(a, b):
+    xA = max(a[0], b[0])
+    yA = max(a[1], b[1])
+    xB = min(a[2], b[2])
+    yB = min(a[3], b[3])
+    inter = max(0, xB - xA) * max(0, yB - yA)
+    areaA = (a[2]-a[0]) * (a[3]-a[1])
+    areaB = (b[2]-b[0]) * (b[3]-b[1])
+    return inter / (areaA + areaB - inter) if (areaA+areaB-inter) else 0
 
 
+def copy_with_label(src_img, dst_img_folder):
+    ensure(dst_img_folder)
+    ensure(dst_img_folder.replace("images", "labels"))
 
-def save_visual(img, pred_boxes, gt_boxes, save_path):
-    vis = img.copy()
-    for cls,x1,y1,x2,y2 in gt_boxes:
-        cv2.rectangle(vis,(x1,y1),(x2,y2),(0,255,0),2)
-    for cls,x1,y1,x2,y2 in pred_boxes:
-        cv2.rectangle(vis,(x1,y1),(x2,y2),(0,0,255),2)
-    cv2.imwrite(save_path, vis)
+    shutil.copy(src_img, dst_img_folder)
+
+    src_lbl = src_img.replace("/images/", "/labels/").rsplit(".", 1)[0] + ".txt"
+    dst_lbl_folder = dst_img_folder.replace("images", "labels")
+
+    if os.path.exists(src_lbl):
+        shutil.copy(src_lbl, dst_lbl_folder)
 
 
 # ------------------------------------
-# MAIN
+# MAIN WORKFLOW
 # ------------------------------------
 
-print("🔍 Loading YOLO model...")
+print("\n🚀 Loading model:", MODEL_PATH)
 model = YOLO(MODEL_PATH)
 
-ensure_dir(OUTPUT_DIR)
+# Clean and prepare folders
+ensure(TRAIN4_DIR)
+ensure(EDGE_DIR)
+ensure(os.path.join(EDGE_DIR, "images"))
+ensure(TRAIN4_DATASET)
 
-false_neg = false_pos = misclassified = low_iou = correct = 0
-total_images = 0
+# Subfolders
+for split in ["train", "val"]:
+    ensure(os.path.join(TRAIN4_DATASET, "images", split))
+    ensure(os.path.join(TRAIN4_DATASET, "labels", split))
 
-print("🚀 Scanning images...")
+results_report = []
 
-for img_path in get_all_images(IMAGES_DIR):
-    total_images += 1
+false_pos = false_neg = miscls = low_iou_cnt = correct = 0
+total = 0
+
+print("\n🔎 Scanning original dataset...")
+for img_path in list_images(IMAGES_DIR):
+    total += 1
 
     img = cv2.imread(img_path)
-    if img is None:
-        continue
+    H, W = img.shape[:2]
 
-    h, w = img.shape[:2]
-
-    # Label from images → labels
+    # GT
     label_path = img_path.replace("/images/", "/labels/").rsplit(".",1)[0] + ".txt"
-    gt_labels = load_yolo_labels(label_path)
-    gt_boxes = [yolo_to_xyxy(gt, w, h) for gt in gt_labels]
+    gt_boxes_raw = load_label(label_path)
+    gt_boxes = [yolo_to_xyxy(b, W, H) for b in gt_boxes_raw]
 
-    # YOLO prediction
-    results = model(img, conf=CONF_THRESHOLD, verbose=False)[0]
-    pred_boxes = []
+    # Prediction
+    pred = model(img, conf=CONF_THRESHOLD, verbose=False)[0]
+    pred_boxes = [[int(b.cls), int(b.xyxy[0][0]), int(b.xyxy[0][1]),
+                   int(b.xyxy[0][2]), int(b.xyxy[0][3])] for b in pred.boxes]
 
-    for b in results.boxes:
-        cls = int(b.cls)
-        x1,y1,x2,y2 = map(int, b.xyxy[0])
-        pred_boxes.append([cls, x1,y1,x2,y2])
-
-    used_gt = set()
-    local_case = None  # to check if correct case
+    used = set()
+    case = "correct"
 
     # Match predictions
-    for pred in pred_boxes:
-        p_cls, px1, py1, px2, py2 = pred
+    for pb in pred_boxes:
+        cls_p, x1,y1,x2,y2 = pb
         best_iou = 0
         best_gt = -1
 
-        for idx, gt in enumerate(gt_boxes):
-            iou = compute_iou([px1,py1,px2,py2], gt[1:])
-            if iou > best_iou:
-                best_iou = iou
+        for idx, gb in enumerate(gt_boxes):
+            i = iou([x1,y1,x2,y2], gb[1:])
+            if i > best_iou:
+                best_iou = i
                 best_gt = idx
 
         if best_iou < 0.01:
+            case = "false_positive"
             false_pos += 1
-            save_copy(img_path, "false_positive")
-            local_case = "fp"
-            continue
+            break
 
         gt_cls = gt_boxes[best_gt][0]
+        used.add(best_gt)
 
-        if p_cls != gt_cls:
-            misclassified += 1
-            save_copy(img_path, "misclassified")
-            local_case = "mc"
-        elif best_iou < IOU_THRESHOLD:
-            low_iou += 1
-            save_copy(img_path, "low_iou")
-            local_case = "low"
-        else:
-            used_gt.add(best_gt)
+        if cls_p != gt_cls:
+            case = "misclassified"
+            miscls += 1
+            break
 
-    # False negative check
-    for idx in range(len(gt_boxes)):
-        if idx not in used_gt:
-            false_neg += 1
-            save_copy(img_path, "false_negative")
-            local_case = "fn"
+        if best_iou < IOU_THRESHOLD:
+            case = "low_iou"
+            low_iou_cnt += 1
+            break
 
-    # If none of the above, it's correct case
-    if local_case is None and SAVE_CORRECT:
+    # False negative
+    if case == "correct":
+        for idx in range(len(gt_boxes)):
+            if idx not in used:
+                case = "false_negative"
+                false_neg += 1
+                break
+
+    if case == "correct":
         correct += 1
-        save_copy(img_path, "correct")
+
+    # Save to edge_case folder
+    dst_case = os.path.join(EDGE_DIR, case)
+    ensure(dst_case)
+    copy_with_label(img_path, os.path.join(dst_case, "images"))
+
+    # If not correct, save into train4 dataset
+    if case != "correct":
+        split = "train" if "/train/" in img_path else "val"
+        dst_final = os.path.join(TRAIN4_DATASET, "images", split)
+        copy_with_label(img_path, dst_final)
+
+
+# ------------------------------------
+# REPORT
+# ------------------------------------
+
+ts = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+report = f"""
+YOLO train3 test report ({ts})
+Model: {MODEL_PATH}
+
+Total images: {total}
+Correct: {correct}
+False Negative: {false_neg}
+False Positive: {false_pos}
+Misclassified: {miscls}
+Low IoU: {low_iou_cnt}
+
+Correct %: {round(correct/total*100,2)}%
+
+"""
+# ⭐ NEW — edge_case 폴더에 계속 이어쓰기
+LOG_PATH = os.path.join(EDGE_DIR, "edge_case_log.txt")
+with open(LOG_PATH, "a") as logf:
+    logf.write(report)
 
 print("\n🔥 DONE!")
-print("=================================")
-print(f"Total images:        {total_images}")
-print(f"Correct:             {correct}")
-print(f"False Negative:      {false_neg}")
-print(f"False Positive:      {false_pos}")
-print(f"Misclassified:       {misclassified}")
-print(f"Low IoU:             {low_iou}")
-print("=================================")
-print("Correct %:", round(correct / total_images * 100, 2))
-print("=================================")
-print(f"Edge cases saved in: {OUTPUT_DIR}")
+print(report)
+print(f"📄 Log saved at: {LOG_PATH}")
