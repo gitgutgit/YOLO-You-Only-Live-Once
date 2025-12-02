@@ -33,8 +33,10 @@ class YOLOExporter:
         
     def _create_data_yaml(self):
         """Creates the data.yaml file required by YOLO."""
+        # Use relative path (.) so data.yaml works regardless of where the project is located
+        # This ensures compatibility across different computer environments
         data = {
-            'path': str(self.base_dir.absolute()),
+            'path': '.',  # Relative path - data.yaml is in the dataset root directory
             'train': 'images/train',
             'val': 'images/train',  # Using train for val for now as we don't have a split yet
             'nc': 5,
@@ -125,8 +127,22 @@ class YOLOExporter:
         lines = []
         
         # Player (Class 0)
-        player_x = game_state['player_x']
-        player_y = game_state['player_y']
+        # 지원: player_x, player_y 형식 (이전 버전) 또는 player.x, player.y 형식 (game_core.py)
+        if 'player_x' in game_state:
+            # 이전 버전 형식: {'player_x': ..., 'player_y': ...}
+            player_x = game_state['player_x']
+            player_y = game_state['player_y']
+        elif 'player' in game_state:
+            # 현재 버전 형식: {'player': {'x': ..., 'y': ...}}
+            player = game_state['player']
+            player_x = player.get('x', 0)
+            player_y = player.get('y', 0)
+        else:
+            # 플레이어 정보가 없으면 빈 라벨 파일 생성
+            with open(file_path, 'w') as f:
+                f.write('')
+            return
+        
         player_size = 50 # From app.py PLAYER_SIZE
         
         # Normalize

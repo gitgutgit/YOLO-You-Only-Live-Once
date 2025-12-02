@@ -757,6 +757,19 @@
                             id="currentTime">0.0s</span></div>
                     <div class="stat-row"><span class="stat-label">Health</span><span class="stat-value"
                             id="currentHealth">100</span></div>
+                    <!-- 🎯 점수 시스템 개선: 세부 점수 표시 -->
+                    <div class="stat-row" style="border-top: 1px solid rgba(255,255,255,0.2); margin-top: 5px; padding-top: 5px;">
+                        <span class="stat-label" style="font-size: 0.85em; color: #aaa;">Time Score</span>
+                        <span class="stat-value" id="timeScore" style="font-size: 0.9em;">0</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label" style="font-size: 0.85em; color: #aaa;">⭐ Stars</span>
+                        <span class="stat-value" id="starScore" style="font-size: 0.9em;">0</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label" style="font-size: 0.85em; color: #aaa;">💥 Dodged</span>
+                        <span class="stat-value" id="dodgedMeteors" style="font-size: 0.9em;">0</span>
+                    </div>
                     <div class="stat-row">
                         <span class="stat-label">Status</span>
                         <span id="connectionStatus" class="status-indicator connected">
@@ -1120,6 +1133,7 @@
                 this.lastLogTime = 0;
                 this.particles = [];  // ⭐ 파티클 효과용
                 this.playerName = null;  // 플레이어 이름
+                this.lastStarCollected = false;  // 🔧 버그 수정: 별 획득 플래그 추적
 
                 // 키보드 상태
                 this.keys = {
@@ -1368,6 +1382,11 @@
                         clearInterval(this.moveInterval);
                         this.moveInterval = null;
                     }
+                    
+                    // 🔧 버그 수정: 키를 떼면 서버에 "stay" 액션 전송
+                    if (!this.keys.right) {
+                        this.socket.emit('player_action', { action: 'stay' });
+                    }
                 }
                 if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') {
                     this.keys.right = false;
@@ -1377,6 +1396,11 @@
                     if (this.moveInterval) {
                         clearInterval(this.moveInterval);
                         this.moveInterval = null;
+                    }
+                    
+                    // 🔧 버그 수정: 키를 떼면 서버에 "stay" 액션 전송
+                    if (!this.keys.left) {
+                        this.socket.emit('player_action', { action: 'stay' });
                     }
                 }
             }
@@ -1784,10 +1808,13 @@
                 this.renderParticles();
 
                 // ⭐ 별 획득 감지 & 파티클 생성 (서버의 star_collected 플래그 확인)
-                if (this.gameState.star_collected) {
+                // 🔧 버그 수정: 별 획득 플래그가 true일 때만 이펙트 생성 (한 번만)
+                if (this.gameState.star_collected && !this.lastStarCollected) {
                     const player = this.gameState.player;
                     this.createStarEffect(player.x + player.size / 2, player.y + player.size / 2);
                 }
+                // 이전 상태 저장 (중복 생성 방지)
+                this.lastStarCollected = this.gameState.star_collected || false;
 
                 // 👁️ YOLO 감지 박스 렌더링 (서버에서 보낸 경우)
                 if (this.gameState.detections) {
@@ -1896,6 +1923,11 @@
                 document.getElementById('currentScore').textContent = this.gameState.score;
                 document.getElementById('currentTime').textContent = (this.gameState.time || 0).toFixed(1) + 's';
                 document.getElementById('currentHealth').textContent = this.gameState.player ? Math.round(this.gameState.player.health || 100) : 0;
+                
+                // 🎯 점수 시스템 개선: 세부 점수 업데이트
+                document.getElementById('timeScore').textContent = this.gameState.time_score || 0;
+                document.getElementById('starScore').textContent = this.gameState.star_score || 0;
+                document.getElementById('dodgedMeteors').textContent = this.gameState.dodged_meteors || 0;
 
                 // 실제 수집된 데이터 개수 표시 (게임 프레임 카운터가 아님)
                 document.getElementById('collectedStates').textContent = this.gameState.collected_states_count || 0;

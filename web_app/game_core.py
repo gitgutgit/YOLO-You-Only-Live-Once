@@ -62,6 +62,14 @@ class GameCore:
         self.lava_zone_x = 0
         self.player_health = 100
         
+        # 🔧 버그 수정: 별 획득 플래그 초기화
+        self.star_collected = False
+        
+        # 🎯 점수 시스템 개선: 세부 점수 추적
+        self.time_score = 0      # 시간 점수 (1초당 1점)
+        self.star_score = 0      # 별 점수
+        self.dodged_meteors = 0  # 피한 메테오 수
+        
         return self._get_state()
 
     def step(self, action):
@@ -135,7 +143,11 @@ class GameCore:
             elif obs['x'] > WIDTH:
                 obs['x'] = -obs.get('size', OBSTACLE_SIZE)
 
-        # Remove off-screen obstacles
+        # Remove off-screen obstacles and count dodged meteors
+        # 🎯 메테오 회피 카운트 (화면 밖으로 나간 메테오만)
+        for obs in self.obstacles[:]:
+            if obs['y'] >= HEIGHT and obs.get('type') == 'meteor':
+                self.dodged_meteors += 1
         self.obstacles = [o for o in self.obstacles if o['y'] < HEIGHT]
         
         # Spawn new obstacles
@@ -165,7 +177,8 @@ class GameCore:
         1 point per second (30 frames = 1 point at 30 FPS)
         """
         if self.frame % 30 == 0:  # Every 30 frames (1 second)
-            self.score += 1
+            self.time_score += 1
+            self.score = self.time_score + self.star_score
 
     def _update_lava(self):
         """Update lava state machine."""
@@ -226,6 +239,9 @@ class GameCore:
         
         self._prev_meteor_dist = nearest_meteor_dist
 
+        # 🔧 버그 수정: 별 획득 플래그 초기화
+        self.star_collected = False
+        
         for obs in self.obstacles[:]:
             obs_rect = [obs['x'], obs['y'], obs['size'], obs['size']]
             if self._rect_overlap(player_rect, obs_rect):
@@ -234,8 +250,13 @@ class GameCore:
                     done = True
                 elif obs['type'] == 'star':
                     reward += 500
-                    self.score += 50
+                    # 🎯 별 점수 낮추기: 50점 → 10점
+                    star_points = 10
+                    self.star_score += star_points
+                    self.score = self.time_score + self.star_score
                     self.obstacles.remove(obs)
+                    # 🔧 버그 수정: 별 획득 플래그 설정
+                    self.star_collected = True
                     
         # Check Lava
         if self.lava_state == 'active':
@@ -285,10 +306,18 @@ class GameCore:
                 'state': self.lava_state,
                 'zone_x': self.lava_zone_x,
                 'height': LAVA_CONFIG['height'],
-                'zone_width': LAVA_CONFIG['zone_width']
+                'zone_width': LAVA_CONFIG['zone_width'],
+                # 🔧 버그 수정: 라바 타이머 추가
+                'timer': self.lava_phase_timer
             },
             'score': self.score,
-            'frame': self.frame
+            'frame': self.frame,
+            # 🔧 버그 수정: 별 획득 플래그 추가
+            'star_collected': getattr(self, 'star_collected', False),
+            # 🎯 점수 시스템 개선: 세부 점수 정보
+            'time_score': getattr(self, 'time_score', 0),
+            'star_score': getattr(self, 'star_score', 0),
+            'dodged_meteors': getattr(self, 'dodged_meteors', 0)
         }
 
     def render(self):
