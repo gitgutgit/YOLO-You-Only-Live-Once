@@ -1,0 +1,4 @@
+../runs/detect/train2/weights/best.pt
+../runs/detect/train3/weights/best.pt
+../runs/detect/train4/weights/best.pt
+../runs/detect/train5/weights/best.pt

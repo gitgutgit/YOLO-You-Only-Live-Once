@@ -1,0 +1,34 @@
+
+=== Model Comparison Report (2025-12-02 11:41) ===
+
+Model: ../runs/detect/train2/weights/best.pt
+  ✓ Strict Correctness: 34.67%
+  ✓ mAP50: N/A
+  ✓ mAP50-95: N/A
+  FN:255 | FP:85 | Mis:56 | LowIoU:757
+  File Size: 5.95 MB
+---------------------------------------------
+
+Model: ../runs/detect/train3/weights/best.pt
+  ✓ Strict Correctness: 38.07%
+  ✓ mAP50: N/A
+  ✓ mAP50-95: N/A
+  FN:259 | FP:64 | Mis:29 | LowIoU:741
+  File Size: 5.94 MB
+---------------------------------------------
+
+Model: ../runs/detect/train4/weights/best.pt
+  ✓ Strict Correctness: 38.02%
+  ✓ mAP50: N/A
+  ✓ mAP50-95: N/A
+  FN:235 | FP:55 | Mis:45 | LowIoU:759
+  File Size: 5.95 MB
+---------------------------------------------
+
+Model: ../runs/detect/train5/weights/best.pt
+  ✓ Strict Correctness: 34.73%
+  ✓ mAP50: N/A
+  ✓ mAP50-95: N/A
+  FN:213 | FP:71 | Mis:21 | LowIoU:847
+  File Size: 5.95 MB
+---------------------------------------------
