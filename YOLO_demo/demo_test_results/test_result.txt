@@ -1,0 +1,48 @@
+Best Yolo Model result : train6/weights/best.pt
+
+
+| Model | Precision | Recall | mAP50 | mAP50-95 |
+|-------|-----------|--------|--------|-----------|
+| train2_best | 0.9347 | 0.9744 | 0.9572 | 0.8791 |
+| train3_best | 0.9407 | 0.9910 | 0.9818 | 0.9344 |
+| train4_best | 0.9430 | 0.9912 | 0.9790 | 0.9234 |
+| train5_best | 0.9392 | 0.9885 | 0.9855 | 0.9462 |
+| train6_best | 0.9393 | 0.9907 | 0.9856 | 0.9477 |
+
+precision : 정밀도; YOLO가 잡았다고 한 것 중에서, 실제로 맞춘 비율
+Recall : 전체 실제 객체 중에서 YOLO가 얼마나 놓치지 않고 찾아냈는지
+mAP50 (정확도 50%) : IoU=50% 기준에서 객체를 얼마나 잘 잡는지
+최종 ranking train6_best : IoU 50%, 55%, 60% … 95%까지 여러 기준에서 평균 정확도
+
+최종 1위: train6_best
+
+mAP50-95 최고 (0.9477)
+
+recall 매우 높음 (0.9907)
+
+precision도 안정적
+
+Lava Class Comparison:
+         model  caution_lava_precision  caution_lava_recall  ...  exist_lava_recall  exist_lava_mAP50  exist_lava_mAP50-95
+0  train2_best                0.965257             0.992446  ...                1.0          0.962895             0.962895
+1  train3_best                0.954981             1.000000  ...                1.0          0.995000             0.995000
+2  train4_best                0.965490             0.999220  ...                1.0          0.995000             0.995000
+3  train5_best                0.952181             1.000000  ...                1.0          0.995000             0.995000
+4  train6_best                0.956985             1.000000  ...                1.0          0.995000             0.995000
+
+[5 rows x 9 columns]
+
+
+
+Using Test code: lava_cpmpare.py
+Dataset:  "train6/train6_dataset/data.yaml"
+
+
+rain6_best (전체적으로 가장 안정적)
+
+recall 1.0000 (절대 놓치지 않음)
+
+precision 안정적
+
+AP 가장 높음
+lava 영역에서도 간격 없이 안정적이고 균형 잡힌 모델
