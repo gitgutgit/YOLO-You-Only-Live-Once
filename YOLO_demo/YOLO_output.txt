@@ -1,0 +1,9 @@
+                   all       1030       9466      0.951      0.987      0.978      0.931
+                player       1030       1030      0.999      0.998      0.995      0.828
+                meteor        999       6516      0.955      0.983      0.977      0.962
+                  star        614       1719      0.922      0.954      0.933       0.88
+          caution_lava        116        116       0.94          1      0.992      0.992
+            exist_lava         85         85      0.939          1      0.992      0.992
+Speed: 0.7ms preprocess, 131.7ms inference, 0.0ms loss, 0.3ms postprocess per image
+Results saved to /Users/jooyeonlee/Project/Yolo_project/YOLO-You-Only-Live-Once/runs/detect/train3_cpu
+>> 이름변경 ; 
