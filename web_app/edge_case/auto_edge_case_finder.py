@@ -104,15 +104,15 @@ import cv2
 # ------------------------------------
 
 # 🔥 [1] 모델 경로(train3 best.pt)
-MODEL_PATH = "../../runs/detect/train4/weights/best.pt"
+MODEL_PATH = "../../runs/detect/train3_cpu/weights/best.pt"
 
 # 🔥 [2] 기존 게임 데이터셋 경로
 IMAGES_DIR = "../game_dataset/images"
 LABELS_DIR = "../game_dataset/labels"
 
-# 🔥 [3] train5 작업 폴더
-TRAIN3_DIR = "../YOLO_demo/train4"
-TRAIN4_DIR = "../YOLO_demo/train5"
+# 🔥 [3] train3 작업 폴더
+TRAIN3_DIR = "../YOLO_demo/train3"
+TRAIN4_DIR = "../YOLO_demo/train4"
 
 EDGE_DIR = os.path.join(TRAIN4_DIR, "edge_case_auto")
 TRAIN4_DATASET = os.path.join(TRAIN4_DIR, "train4_dataset")

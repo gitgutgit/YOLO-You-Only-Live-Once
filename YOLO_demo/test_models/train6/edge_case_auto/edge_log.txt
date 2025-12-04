@@ -1,0 +1,15 @@
+
+========================================================
+ YOLO Evaluation Report (train5 → build train6)
+ Time: 2025-12-02 11:02
+ Model: ../../runs/detect/train5/weights/best.pt
+
+ Total:          1765
+ Correct:        620
+ False Negative: 215
+ False Positive: 74
+ Misclassified:  21
+ Low IoU:        835
+
+ Correct %: 35.13%
+========================================================

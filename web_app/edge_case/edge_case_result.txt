@@ -69,9 +69,97 @@ same dataset with train3 (1766 total)
     name=train5
 
 
-    
+20 epochs completed in 1.539 hours.
+Optimizer stripped from /Users/jooyeonlee/Project/Yolo_project/YOLO-You-Only-Live-Once/runs/detect/train52/weights/last.pt, 6.2MB
+Optimizer stripped from /Users/jooyeonlee/Project/Yolo_project/YOLO-You-Only-Live-Once/runs/detect/train52/weights/best.pt, 6.2MB
+
+Validating /Users/jooyeonlee/Project/Yolo_project/YOLO-You-Only-Live-Once/runs/detect/train52/weights/best.pt...
+Ultralytics 8.3.233 🚀 Python-3.13.3 torch-2.9.1 CPU (Apple M3 Pro)
+Model summary (fused): 72 layers, 3,006,623 parameters, 0 gradients, 8.1 GFLOPs
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 50% ━━━━━━────── 1/2 8.7s/i
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 2/2 2.3s/
+                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 2/2 2.3s/it 4.6s
+                   all         54        377      0.966      0.999      0.995      0.956
+                player         54         54       0.99          1      0.995      0.837
+                meteor         51        301      0.997      0.997      0.995      0.983
+                  star         12         12      0.948          1      0.995      0.971
+          caution_lava          5          5      0.897          1      0.995      0.995
+            exist_lava          5          5          1          1      0.995      0.995
+Speed: 0.6ms preprocess, 79.8ms inference, 0.0ms loss, 0.1ms postprocess per image
+Results saved to /Users/jooyeonlee/Project/Yolo_project/YOLO-You-Only-Live-Once/runs/detect/train52
+💡 Learn more at https://docs.ultralytics.com/modes/train
+
+ YOLO Evaluation Report (train5 → build train6)
+ Time: 2025-12-02 11:02
+ Model: ../../runs/detect/train5/weights/best.pt
+
+ Total:          1765
+ Correct:        620
+ False Negative: 215
+ False Positive: 74
+ Misclassified:  21
+ Low IoU:        835
+
+ Correct %: 35.13%
+========================================================
+
+Train4 → Train5 사이에서:
+
+train4에서 correct 데이터 제거 → 데이터 분포 왜곡됨
+
+train5 실행 시 data.yaml = game_dataset 그대로 → distribution mismatch 발생
+
+Train3에서는 존재하던 정상 sample들을 Train4 과정에서 삭제됨
+
+Hard examples는 과대표집됨
+
+일부 lava/stars는 수가 적어서 모델이 쉽게 잊어버림 (catastrophic forgetting)
+
+➡ 결국 “학습 난이도는 올라가고, 정상 sample은 줄어들고, GT와 예측의 분포는 틀어짐”
+
+
+Train6: train3 모델 → train6_dataset로 학습하는 것이 최선
+
+현재 correct 판정기준
+1) Predicted class == GT class
+2) IoU ≥ 0.5
+3) 모든 GT box가 detect됨 (완전 recall)
+4) False positive 없어야 함
+
+
+ yolo detect train \
+    model=runs/detect/train3/weights/best.pt \
+    data=YOLO_demo/train6/train6_dataset/data.yaml \
+    epochs=20 \
+    name=train6
+
+
+
+                   all        224       1994      0.939      0.991      0.986      0.948
+                player        224        224          1      0.988      0.995      0.838
+                meteor        216       1375      0.952      0.985      0.981      0.975
+                  star        129        349      0.912       0.98      0.963      0.939
+          caution_lava         28         28      0.957          1      0.994      0.992
+            exist_lava         18         18      0.876          1      0.995      0.995
+Speed: 0.5ms preprocess, 80.1ms inference, 0.0ms loss, 0.2ms postprocess per image
+
+============================
+        Evaluation Result
+============================
+Total Images       : 1765
+Correct Images     : 600
+Incorrect Images   : 1165
+Correct %          : 33.99%
+
+📦 Object-level Statistics
+FN objects         : 548
+FP objects         : 443
+Misclassified objs : 152
+Low IoU objs       : 1239
+
 
 train2: 34.73
 Train3: 38.02%
 Train4: 38.07%
-Train5: 
+Train5: 35.13%
+Train6: 
