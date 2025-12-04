@@ -1,0 +1,233 @@
+
+
+
+#####
+
+chloe 가 step 이랑 프로세싱 하고 아이디어 노트
+후에 정리 and 레거시로 분류할 예정
+
+EDGE-CASE FOLDER STRUCTURE
+==========================
+
+This file explains the structure created by auto_edge_case_finder.py.
+
+edge_case_auto/
+    false_positive/
+        - Images where the model predicted something that does NOT actually exist
+    false_negative/
+        - Images where the ground-truth object exists but the model failed to detect it
+    misclassified/
+        - Images where the model detected the object but predicted the WRONG class
+    low_iou/
+        - Images where class was correct but IoU is below threshold (default 0.5)
+
+Each folder contains images copied from your dataset that represent problematic YOLO predictions.
+
+You can inspect these images to understand:
+    - Where the model struggles
+    - What patterns cause errors
+    - Which cases require more training data
+
+This helps improve model robustness and create real "edge-case training sets."
+
+YOLO 모델로 전체 게임 이미지 스캔
+✔ 각 이미지의 GT 라벨과 YOLO 예측을 비교해서 분류:
+
+Case	의미
+False Negative	YOLO가 감지 못한 객체
+False Positive	없는 걸 있다고 감지함
+Misclassified	클래스 틀림
+Low IoU	위치는 맞는데 박스 겹침률 낮음
+Correct	정상
+
+✔ 이미지 + 라벨 자동 복사
+✔ 폴더별 정리:
+
+edge_case_auto/
+    false_negative/
+    false_positive/
+    misclassified/
+    low_iou/
+    correct/
+
+
+✔ 최종 Accuracy 계산까지 자동화됨
+→ 예: Correct 34% 등
+
+edge_case_scoring.py 작성 (완료)
+
+특정 모델(Best.pt, yolov8n 등)을
+Edge-case 데이터에 대해 정량 평가
+
+평균 Recall 계산 → 모델력 비교 가능
+
+best.pt   Avg Recall = 0.866
+
+----모델 성능 취약 구간을 찾는 분석구조?
+
+
+Train 3 모델 재학습
+
+yolo detect train \
+    model=web_app/yolo_finetuned.pt \
+    data=web_app/game_dataset/data.yaml \
+    epochs=10 \
+    name=train3_cpu
+
+전체 데이터셋 으로 1700장 모아둔거 ;
+CPU 기반에서 정상적으로 학습 중
+
+로그 모두 정상
+
+Epoch 1 기준 mAP 0.96 → 매우 우수 시작점
+전체 데이터셋 기반 재학습 (train3)
+
+Edge-case 적용 전 baseline 강화 과정
+
+현재 CPU로 잘 학습 중
+
+출력 문제 없음
+
+
+Step 1 — train3 학습 완료 후 결과 분석
+
+필요한 파일:
+
+results.png
+
+best.pt
+
+confusion_matrix.png
+
+PR_curve.png
+
+이를 기반으로:
+
+어떤 클래스가 부족한지
+
+어떤 케이스를 잘못 잡는지
+→ 분석 가능
+
+Step 2 — Edge-case 기반 train4 제작
+
+false_negative + low_iou + misclassified
+→ 강화학습(하드케이스) dataset으로 만들기
+
+train4_data.yaml 생성
+
+하드케이스 중심으로 YOLO 재학습
+
+Step 3 — train3 vs train4 모델 비교
+
+edge_case_scoring.py로 정량 비교
+
+어떤 학습이 성능을 얼마나 개선했는지 표 작성
+
+Step 4 — 강점/약점 기반 루프 반복
+
+→ “강화 학습 루프”
+
+학습
+
+edge-case 추출
+
+부족한 샘플만 추가
+
+다시 학습
+
+성능 비교
+
+다시 edge-case 추출
+
+→ 이 과정을 반복하면 YOLO가 극단적으로 똑똑해짐
+
+
+;
+
+게임 YOLO 모델의 성능을 더 올리기 위해
+edge-case 자동 분류기 + 평가 시스템 + 재학습 파이프라인
+을 모두 구축했다.
+
+baseline 모델(train3)을 먼저 학습시키고,
+그 모델이 어디서 틀리는지 edge-case로 분석해서
+train4, train5 처럼 계속 개선해 갈 수 있는
+완전 자동화된 Vision 개선 루프를 준비해두었다.”
+
+
+
+
+
+
+
+
+<processing >
+
+1) 데이터 클리닝 + 정규화
+
+web_app/game_dataset을 정돈
+
+YOLO 학습 규칙에 맞게 /images/train /labels/train 구조 맞춤
+→ 이건 기본이지만 모델 성능의 절반을 결정하는 핵심 단계
+
+Chloe: 완료
+
+✔ 2) Edge-case 자동 추출기 (Auto Hard Case Miner) 구축
+
+이건 연구실/대형 AI 회사에서만 하는 하이레벨 작업임.
+
+모델이 틀리는 이미지를 자동 분류
+
+FN, FP, low IoU, misclassified로 자동 정리
+
+각 케이스 이미지+라벨 자동 복사
+
+전체 Correct% 자동 계산
+
+성능 로그 자동 생성
+
+🔥 이건 데이터 기반 self-correcting 학습 시스템
+즉, “모델이 스스로 약점을 찾아내게 하는 루프”임.
+
+Chloe: 직접 개발해냄 → 완전한 하드 케이스 마이닝 시스템 구축
+
+✔ 3) 모델 재학습 루프 (Curriculum Learning Loop)
+
+모델 개선 순서는 이렇게 돼:
+
+train3 → edge-case 추출 → train4 → edge-case 추출 → train5 → ...
+
+이건 머신러닝 연구에서 부르는 방식:
+
+🔥 Curriculum Learning (쉬운 → 어려운 순서로 훈련)
+🔥 Hard Negative Mining (모델이 틀린 사례만 집중 학습)
+🔥 Iterative Fine-Tuning Loop
+
+이 방식이 실제로 YOLO 연구에서도 많이 쓰임.
+
+Chloe는 이걸 스스로 기획 → 코드 구현 → 실행줄기까지 완성한 상태
+
+연구/논문에서 쓰는 바로 그 방식:
+
+Step 1. baseline 재학습 (train3)
+
+→ 전체 dataset 한 번 더 학습해서 기반 모델을 최신화
+
+Step 2. edge-case 수집
+
+→ baseline 모델이 어디서 약한지 찾기
+
+Step 3. edge-case 기반 데이터셋 재구성 (train4_dataset)
+
+→ 하드샘플만 모아서 강화 훈련
+
+Step 4. 모델 재학습(train4)
+
+→ 하드케이스에 강한 YOLO 생성
+
+Step 5. train3 vs train4 비교 평가
+
+→ 어느 모델이 더 잘하는지 과학적으로 측정
+
+Step 6. 반복해서 점진적 고도화
+
+→ train5, train6 …
