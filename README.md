@@ -118,6 +118,36 @@ YOLO-You-Only-Live-Once/
 
 ---
 
+## 🤖 AI Mode Explained
+
+When you click **AI Mode**, the agent uses a **multi-level AI system**:
+
+### AI Decision Pipeline
+
+```
+Game State → YOLO Detection → State Encoder → PPO Policy → Action
+     ↓              ↓               ↓             ↓
+  30 FPS      5 classes      26-dim vector   {left, right, jump, stay}
+```
+
+### AI Difficulty Levels
+
+| Level | Name   | Strategy                               |
+| ----- | ------ | -------------------------------------- |
+| 1     | Easy   | Simple heuristics (basic avoidance)    |
+| 2     | Medium | PPO model (Vision → State → Policy)    |
+| 3     | Hard   | Heuristics + PPO ensemble              |
+| 4     | Expert | Full ensemble (PPO + DQN + Heuristics) |
+
+### Models Used
+
+| Model    | Status     | Purpose                                 | File                |
+| -------- | ---------- | --------------------------------------- | ------------------- |
+| **YOLO** | ✅ Trained | Object detection (lava, meteors, stars) | `yolo_finetuned.pt` |
+| **PPO**  | ✅ Trained | AI decision making                      | `ppo_agent.pt`      |
+
+---
+
 ## 🔬 Technical Overview
 
 ### Pipeline
@@ -128,14 +158,14 @@ RGB Frame → YOLO Detection → State Encoder (26-dim) → PPO Policy → Actio
 
 ### Key Files
 
-| File | Description |
-|------|-------------|
-| `web_app/app.py` | Main Flask server, game loop, socket communication |
-| `web_app/game_core.py` | Game physics, collision detection, lava system |
-| `web_app/state_encoder.py` | Converts YOLO detections to 26-dim state vector |
-| `web_app/ppo/agent.py` | PPO agent with actor-critic networks |
-| `web_app/yolo_finetuned.pt` | Fine-tuned YOLOv8-nano model |
-| `web_app/ppo_agent.pt` | Trained PPO policy model |
+| File                        | Description                                        |
+| --------------------------- | -------------------------------------------------- |
+| `web_app/app.py`            | Main Flask server, game loop, socket communication |
+| `web_app/game_core.py`      | Game physics, collision detection, lava system     |
+| `web_app/state_encoder.py`  | Converts YOLO detections to 26-dim state vector    |
+| `web_app/ppo/agent.py`      | PPO agent with actor-critic networks               |
+| `web_app/yolo_finetuned.pt` | Fine-tuned YOLOv8-nano model                       |
+| `web_app/ppo_agent.pt`      | Trained PPO policy model                           |
 
 ### Results
 
@@ -147,13 +177,61 @@ RGB Frame → YOLO Detection → State Encoder (26-dim) → PPO Policy → Actio
 
 ### YOLO Classes (5 classes)
 
-| Class | ID | Description |
-|-------|-----|-------------|
-| player | 0 | Purple cube character |
-| meteor | 1 | Falling obstacles |
-| star | 2 | Collectible items |
-| caution_lava | 3 | Lava warning zone |
-| exist_lava | 4 | Active lava zone |
+| Class        | ID  | Description           |
+| ------------ | --- | --------------------- |
+| player       | 0   | Purple cube character |
+| meteor       | 1   | Falling obstacles     |
+| star         | 2   | Collectible items     |
+| caution_lava | 3   | Lava warning zone     |
+| exist_lava   | 4   | Active lava zone      |
+
+---
+
+## 📦 YOLO Dataset Format
+
+Our YOLO training data follows the standard Ultralytics format:
+
+### Directory Structure
+
+```
+game_dataset/
+├── data.yaml              # Dataset configuration
+├── images/
+│   ├── train/             # Training images (.jpg)
+│   └── val/               # Validation images (.jpg)
+└── labels/
+    ├── train/             # Training labels (.txt)
+    └── val/               # Validation labels (.txt)
+```
+
+### Label Format (YOLO)
+
+Each `.txt` file contains one line per object:
+
+```
+class_id  x_center  y_center  width  height
+   0       0.5234    0.3125   0.085   0.120
+```
+
+- All coordinates are **normalized** (0.0 ~ 1.0)
+- `x_center`, `y_center`: Center of bounding box
+- `width`, `height`: Box dimensions relative to image size
+
+### data.yaml Example
+
+```yaml
+path: .
+train: images/train
+val: images/val
+
+nc: 5 # number of classes
+names:
+  0: player
+  1: meteor
+  2: star
+  3: caution_lava
+  4: exist_lava
+```
 
 ---
 
