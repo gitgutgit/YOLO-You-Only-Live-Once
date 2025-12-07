@@ -1,3 +1,6 @@
+#run YOLO-You-Only-Live-Once/YOLO_demo
+
+
 import os
 from ultralytics import YOLO
 print(f"current dir: {os.getcwd()}")
@@ -28,18 +31,4 @@ Prediciton 3,4,5 is the yolov8n.pt model and prediction 1,2 is the best.pt model
 
 
 
-folder_path = "train6/train6_dataset/images/val"
-results = model(folder_path, 
-                project="demo_test_result",  # save in this folder
-                name="train5/predictions",          # sub folder name (if u want to save in different folder)
-                save=True) 
-
-# limit to 30 images (for testing but could be changed if u want to see all images!)
-if len(results)>30:
-    results = results[:30]
-else:
-    pass
-
-# show and save
-for r in results:
-    r.show()        #show in screen
+f#
