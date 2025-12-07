@@ -1,0 +1,15 @@
+
+YOLO train3 test report (2025-12-02 04:10)
+Model: ../../runs/detect/train3_cpu/weights/best.pt
+
+Total images: 1765
+Correct: 671
+False Negative: 260
+False Positive: 64
+Misclassified: 29
+Low IoU: 741
+
+Correct %: 38.02%
+
+train4_dataset created at:
+../YOLO_demo/train4/train4_dataset

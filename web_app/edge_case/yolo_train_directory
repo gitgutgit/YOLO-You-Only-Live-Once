@@ -1,0 +1,25 @@
+✔ train4_summary.txt
+
+→ 전체 테스트 리포트
+
+YOLO_demo/train4/train4_summary.txt
+
+✔ train4_dataset (다음 학습에 쓰이는 데이터셋);Total - correct
+YOLO_demo/train4/train4_dataset/
+
+✔ edge_case_auto (엣지케이스 저장된 곳)
+YOLO_demo/train4/edge_case_auto/
+
+✔  run/detect ; YOLO model train List
+wegith : best.pt
+
+edge_case/
+edge_case_auto; 코드로 자동으로 엣지케이스 찾아서 폴더별로 나눠서 저장하기 (기준은 기존 전체데이터셋)
+
+edge_case_previous_model: train2 best.pt학습능력 평가 with edge case
+
+auto_edge_case_finder; 자동으로 엣지케이스 분류 & 학습능력 평가 with edge case
+
+edge_case_scoring ; 후에 모델 기능 비교 및 리포트 작성할 코드
+
+web_app/game_dataset ; local game auto collection for data (ignore)

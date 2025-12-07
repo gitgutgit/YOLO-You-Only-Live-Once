@@ -1,0 +1,10 @@
+path: /Users/jooyeonlee/Project/Yolo_project/YOLO-You-Only-Live-Once/YOLO_demo/train5/train5_dataset
+train: images/train
+val: images/val
+
+names:
+  0: player
+  1: meteor
+  2: star
+  3: caution_lava
+  4: exist_lava
