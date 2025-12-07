@@ -5,23 +5,16 @@ Modules Package - Team Collaboration Modules
 각자 독립적으로 작업할 수 있도록 구조화
 
 모듈 구조:
-- game_engine: 공통 게임 로직 (수정 금지)
 - cv_module: Jeewon Kim (jk4864) - 컴퓨터 비전
 - ai_module: Chloe Lee (cl4490) - AI 정책
+
+Note: game_engine은 game_core.py로 대체됨
 """
 
-from .game_engine import GameState, GameActions, GameObject, Player, Obstacle
 from .cv_module import ComputerVisionModule, CVDetectionResult
 from .ai_module import AIModule, AIDecisionResult
 
 __all__ = [
-    # Game Engine (공통)
-    'GameState',
-    'GameActions', 
-    'GameObject',
-    'Player',
-    'Obstacle',
-    
     # CV Module (Jeewon)
     'ComputerVisionModule',
     'CVDetectionResult',

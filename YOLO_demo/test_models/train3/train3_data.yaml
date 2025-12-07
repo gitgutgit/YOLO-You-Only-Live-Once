@@ -1,5 +1,0 @@
-train: ./train3_dataset/images/train
-val: ./train3_dataset/images/val
-
-nc: 4
-names: ["player", "meteor", "star", "lava"]
