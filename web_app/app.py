@@ -625,6 +625,14 @@ def game_loop():
                         try:
                             action_idx = ppo_agent.select_action_eval(state_vec)
                             action = ACTION_LIST[action_idx]
+                            
+                            # action probs 추출
+                            with torch.no_grad():
+                                s = torch.FloatTensor(state_vec).unsqueeze(0)
+                                if next(ppo_agent.policy_old.parameters()).is_cuda:
+                                    s = s.cuda()
+                                probs_tensor = ppo_agent.policy_old(s)
+                                action_probs = probs_tensor.cpu().numpy()[0].tolist()
                         except Exception as e:
                             print(f"⚠️ Level 3 PPO error: {e}")
                             action = _level3_heuristic(game_state)
