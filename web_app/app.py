@@ -1,66 +1,46 @@
-# web_app/app.py
-
 import os
 import time
 import base64
-import json
 from datetime import datetime
-from pathlib import Path
 
 import numpy as np
-
-# Optional ML dependencies (graceful degradation)
-try:
-    import torch
-    TORCH_AVAILABLE = True
-except ImportError:
-    TORCH_AVAILABLE = False
-    print("⚠️ PyTorch not available - AI features disabled")
-
-try:
-    from ultralytics import YOLO
-    YOLO_AVAILABLE = True
-except ImportError:
-    YOLO_AVAILABLE = False
-    print("⚠️ Ultralytics not available - YOLO detection disabled")
+import torch
+from ultralytics import YOLO
 
 from flask import Flask, send_from_directory, jsonify
 from flask_socketio import SocketIO, emit
 
-from game_core import GameCore, WIDTH, HEIGHT, PLAYER_SIZE
+from game_core import GameCore
 from state_encoder import encode_state, ACTION_LIST, STATE_DIM
-
-# PPO agent only if torch is available
-if TORCH_AVAILABLE:
-    from ppo.agent import PPOAgent
-else:
-    PPOAgent = None
+from ppo.agent import PPOAgent
 
 # ==========================
-# 기본 설정
+# Basic Configuration
 # ==========================
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-YOLO_MODEL_PATH = os.path.join(BASE_DIR, "yolo_finetuned.pt")          # fine-tuned YOLO
-PPO_MODEL_PATH = os.path.join(BASE_DIR, "ppo_agent.pt")      # trained PPO
+YOLO_MODEL_PATH = os.path.join(BASE_DIR, "yolo_finetuned.pt")          # fine-tuned YOLO model path
+PPO_MODEL_PATH = os.path.join(BASE_DIR, "ppo_agent.pt")      # trained PPO agent model path
+
 
 app = Flask(
     __name__,
     static_folder=BASE_DIR,
-    static_url_path=""          # /index.html 로 접근 가능
+    static_url_path=""          # Accessible via /index.html
 )
+# Initialize SocketIO with Flask app
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
-# 전역 객체들 (main에서 초기화)
+# Global objects (initialized in main)
 yolo_model = None
 ppo_agent = None
-ai_level_manager = None  # AI 레벨 관리자
 
+# Game state variables
 game = None
 game_running = False
 current_mode = "human"          # 'human' or 'ai'
-current_ai_level = 2            # 1~4
+current_ai_level = 2            # AI difficulty level (1~4)
 last_action = "stay"
 pending_jump = False
 show_detections = True
@@ -69,45 +49,43 @@ current_sid = None              # Track which client is playing
 start_time = 0.0
 player_name = None
 
-# 데이터 수집 카운터
+# Data collection counters
 collected_states_count = 0
 collected_images_count = 0
 
-# 데이터 수집 리스트 (게임 상태 저장용)
-collected_states = []  # [{frame, state, action, reward, done}, ...]
-collected_bboxes = []  # [{frame, objects: [...]}, ...]
-
-# action 확률 (AI 모드일 때)
+# Action probabilities (in AI mode)
 last_action_probs = None
 
-# 리더보드 (메모리 버전, 필요하면 나중에 파일 저장으로 확장 가능)
-leaderboard = []  # 각 항목: {player, score, time, mode, date}
+# Leaderboard (in-memory, can be extended to file storage later if needed)
+leaderboard = []  # Each entry: {player, score, time, mode, date}
 
 
 # ==========================
-# PPO 로더 (새/옛 포맷 둘 다 지원)
+# PPO Loader (Supports both new and old formats)
 # ==========================
 
 def load_ppo_for_web(model_path: str) -> PPOAgent:
-    """watch_agent.py와 동일한 로직으로 PPO 체크포인트 로드."""
+    """Loads PPO checkpoint with the same logic as watch_agent.py."""
     if not os.path.exists(model_path):
         raise FileNotFoundError(f"PPO agent not found at {model_path}")
     print(f"✅ Loading PPO agent from {model_path}")
 
+    # Load checkpoint to CPU/GPU based on availability
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     checkpoint = torch.load(model_path, map_location=device)
 
-    # 옛날 포맷: lr 키가 있음 → agent.load 사용
+    # Old format check: has 'lr' key → use PPOAgent.load
     if "lr" in checkpoint:
         print("   📂 Old checkpoint format detected (has 'lr')")
         agent = PPOAgent.load(model_path)
         return agent
 
-    # 새 포맷 (BC + PPO 튜닝 이후)
+    # New format (after BC + PPO tuning)
     print("   📂 New checkpoint format detected")
     state_dim = checkpoint.get("state_dim", STATE_DIM)
     action_dim = checkpoint.get("action_dim", len(ACTION_LIST))
 
+    # Initialize agent with default parameters
     agent = PPOAgent(
         state_dim=state_dim,
         action_dim=action_dim,
@@ -117,6 +95,7 @@ def load_ppo_for_web(model_path: str) -> PPOAgent:
         K_epochs=10,
     )
 
+    # Load policy and value network states
     if "policy_state_dict" in checkpoint:
         agent.policy.load_state_dict(checkpoint["policy_state_dict"])
         agent.policy_old.load_state_dict(checkpoint["policy_state_dict"])
@@ -127,28 +106,36 @@ def load_ppo_for_web(model_path: str) -> PPOAgent:
     return agent
 
 
+# Load models immediately upon script execution
+print("✅ Loading YOLO model:", YOLO_MODEL_PATH)
+yolo_model = YOLO(YOLO_MODEL_PATH)
+
+print("✅ Loading PPO model:", PPO_MODEL_PATH)
+ppo_agent = load_ppo_for_web(PPO_MODEL_PATH)
+
 # ==========================
-# Flask 라우트 (HTML / 리더보드)
+# Flask Routes (HTML / Leaderboard)
 # ==========================
 
 @app.route("/")
 def index():
-    """http://localhost:5001/ → index.html"""
+    """Route for http://localhost:5000/ → serves index.html"""
     return send_from_directory(BASE_DIR, "index.html")
 
 
 @app.route("/favicon.ico")
 def favicon():
+    """Route to serve favicon.ico if it exists."""
     fav = os.path.join(BASE_DIR, "favicon.ico")
     if os.path.exists(fav):
         return send_from_directory(BASE_DIR, "favicon.ico")
-    return ("", 204)
+    return ("", 204) # No Content
 
 
 @app.route("/api/leaderboard")
 def api_leaderboard():
-    """리더보드 JSON 반환 (시간/점수 순 정렬)."""
-    # time 내림차순 → score 내림차순
+    """Returns the leaderboard as JSON (sorted by time/score)."""
+    # Sort by time (descending) → score (descending)
     sorted_scores = sorted(
         leaderboard,
         key=lambda x: (-x.get("time", 0), -x.get("score", 0))
@@ -157,7 +144,7 @@ def api_leaderboard():
 
 
 # ==========================
-# YOLO 헬퍼
+# YOLO Helper
 # ==========================
 
 CLS2NAME = {
@@ -171,16 +158,16 @@ CLS2NAME = {
 
 def run_yolo_on_frame(frame_rgb):
     """
-    GameCore.render() 로 얻은 RGB 프레임에 YOLO 적용.
-    반환:
-      - detections_for_state: encode_state용 (normalized)
-      - detections_for_client: index.html에서 그릴용 (pixel bbox)
+    Applies YOLO to the RGB frame obtained from GameCore.render().
+    Returns:
+      - detections_for_state: for encode_state (normalized coordinates)
+      - detections_for_client: for drawing on index.html (pixel bbox)
     """
     if yolo_model is None:
         return [], []
 
-    # Ultralytics YOLO는 RGB numpy 바로 먹음
-    # conf=0.15: 별(star) 탐지 개선을 위해 threshold 낮춤 (기본값 0.25)
+    # Ultralytics YOLO accepts RGB numpy array directly
+    # conf=0.15: Lower threshold to improve star detection (default is 0.25)
     results = yolo_model(frame_rgb, conf=0.15, verbose=False)
     detections_for_state = []
     detections_for_client = []
@@ -212,7 +199,7 @@ def run_yolo_on_frame(frame_rgb):
         if hasattr(box, "xyxy"):
             x1, y1, x2, y2 = box.xyxy[0].tolist()
         else:
-            # xywhn 기준으로 변환
+            # Convert from xywhn
             cx = x * W
             cy = y * H
             pw = w * W
@@ -234,28 +221,28 @@ def run_yolo_on_frame(frame_rgb):
 
 
 # ==========================
-# 상태 → 프론트엔드 payload 변환
+# State → Frontend Payload Conversion
 # ==========================
 from game_core import GameCore, WIDTH, HEIGHT, PLAYER_SIZE, OBSTACLE_SIZE, LAVA_CONFIG
 def build_state_payload(state_dict, time_elapsed: float):
     """
-    GameCore._get_state() 에서 나온 state_dict + 경과 시간(time_elapsed)을
-    프론트(index.html)의 JS가 기대하는 형태로 변환해주는 함수.
+    Converts state_dict from GameCore._get_state() + time_elapsed
+    into the format expected by the frontend JS (index.html).
     """
     global current_mode, collected_states_count, last_action_probs
 
-    # 1) 플레이어
+    # 1) Player information
     player = state_dict.get("player", {})
     player_payload = {
         "x": float(player.get("x", 0)),
         "y": float(player.get("y", 0)),
         "vy": float(player.get("vy", 0)),
-        # ⚠️ 이거 매우 중요: JS 쪽 render()에서 player.size를 쓰고 있음
+        # ⚠️ IMPORTANT: JS render() uses player.size
         "size": float(player.get("size", PLAYER_SIZE)),
         "health": float(player.get("health", 100)),
     }
 
-    # 2) 장애물 (메테오 / 별)
+    # 2) Obstacles (Meteor / Star)
     obstacles_payload = []
     for o in state_dict.get("obstacles", []):
         obstacles_payload.append({
@@ -267,22 +254,21 @@ def build_state_payload(state_dict, time_elapsed: float):
             "vy": float(o.get("vy", 5.0)),
         })
 
-    # 3) 용암 정보
+    # 3) Lava information
     lava = state_dict.get("lava", {})
     lava_payload = {
         "state": lava.get("state", "inactive"),
         "zone_x": float(lava.get("zone_x", 0)),
         "zone_width": float(lava.get("zone_width", LAVA_CONFIG["zone_width"])),
         "height": float(lava.get("height", LAVA_CONFIG["height"])),
-        # timer는 game_loop에서 넣어주거나 여기서 기본값 0.0
+        # The timer should be calculated in game_loop or defaults to 0.0 here
         "timer": float(lava.get("timer", 0.0)),
     }
 
-    # 4) 기본 메타 정보
+    # 4) Basic Meta Information
     frame = int(state_dict.get("frame", 0))
     score = int(state_dict.get("score", 0))
 
-    global show_detections
     payload = {
         "player": player_payload,
         "obstacles": obstacles_payload,
@@ -292,269 +278,27 @@ def build_state_payload(state_dict, time_elapsed: float):
         "frame": frame,
         "mode": current_mode,
         "collected_states_count": int(collected_states_count),
-        "collected_images_count": int(collected_images_count),  # 🔧 버그 수정: 실제 카운트 사용
-        # 🔧 버그 수정: 별 획득 플래그 추가
-        "star_collected": state_dict.get("star_collected", False),
-        # 🎯 점수 시스템 개선: 세부 점수 정보
-        "time_score": int(state_dict.get("time_score", 0)),
-        "star_score": int(state_dict.get("star_score", 0)),
-        "dodged_meteors": int(state_dict.get("dodged_meteors", 0)),
-        # 👁️ YOLO Detection 토글 상태
-        "show_detections": show_detections
+        "collected_images_count": 0,   # Not used currently
     }
 
-    # 5) PPO action probs (AI 모드에서만)
+    # 5) PPO action probs (only in AI mode)
     if last_action_probs is not None:
         payload["action_probs"] = last_action_probs
 
     return payload
 
 # ==========================
-# 데이터 수집 및 저장
-# ==========================
-
-def save_gameplay_data(session_id: str, mode: str, player_name: str, score: float, survival_time: float):
-    """
-    게임플레이 데이터를 collected_gameplay/ 디렉토리에 저장
-    
-    저장 형식:
-    - metadata.json: 세션 메타데이터
-    - states_actions.jsonl: State-Action-Reward 시퀀스 (클로용)
-    - bboxes.jsonl: 바운딩 박스 라벨 (제이용)
-    """
-    global collected_states, collected_bboxes
-    
-    if len(collected_states) == 0:
-        print("⚠️ 수집된 데이터가 없어 저장하지 않습니다.")
-        return
-    
-    # 세션 디렉토리 생성
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    session_dir = Path(BASE_DIR) / "collected_gameplay" / f"session_{timestamp}_{mode}"
-    session_dir.mkdir(parents=True, exist_ok=True)
-    
-    # 1. 메타데이터 저장
-    metadata = {
-        "session_id": session_id or f"session_{timestamp}",
-        "mode": mode,
-        "score": score,
-        "survival_time": survival_time,
-        "total_frames": len(collected_states),
-        "final_state": {
-            "player_x": collected_states[-1]["state"].get("player", {}).get("x", 0) if collected_states else 0,
-            "player_y": collected_states[-1]["state"].get("player", {}).get("y", 0) if collected_states else 0,
-            "obstacles_count": len(collected_states[-1]["state"].get("obstacles", [])) if collected_states else 0
-        },
-        "timestamp": datetime.now().isoformat(),
-        "player_name": player_name or ("AI" if mode == "ai" else "Unknown")
-    }
-    
-    metadata_file = session_dir / "metadata.json"
-    with open(metadata_file, 'w', encoding='utf-8') as f:
-        json.dump(metadata, f, indent=2, ensure_ascii=False)
-    
-    # 2. State-Action-Reward 저장 (JSONL 포맷 - 클로용)
-    states_file = session_dir / "states_actions.jsonl"
-    with open(states_file, 'w', encoding='utf-8') as f:
-        for state_record in collected_states:
-            f.write(json.dumps(state_record, ensure_ascii=False) + '\n')
-    
-    # 3. Bounding Box 라벨 저장 (JSONL 포맷 - 제이용)
-    bboxes_file = session_dir / "bboxes.jsonl"
-    with open(bboxes_file, 'w', encoding='utf-8') as f:
-        for bbox_record in collected_bboxes:
-            f.write(json.dumps(bbox_record, ensure_ascii=False) + '\n')
-    
-    print(f"📊 게임플레이 데이터 저장 완료:")
-    print(f"   - 디렉토리: {session_dir.name}")
-    print(f"   - State-Action 로그: {len(collected_states)}개")
-    print(f"   - Bbox 라벨: {len(collected_bboxes)}개")
-    print(f"   - 모드: {mode}")
-    print(f"   - 점수: {score}")
-    print(f"   - 생존 시간: {survival_time:.2f}초")
-    
-    # 4. YOLO 데이터셋으로 내보내기 (제이용)
-    try:
-        from yolo_exporter import YOLOExporter
-        from storage_manager import get_storage_manager
-        
-        exporter = YOLOExporter(base_dir="game_dataset")
-        storage = get_storage_manager()
-        
-        # 프레임이 저장된 경로 찾기
-        # storage_manager.py에 따르면: local_data_dir / 'gameplay' / 'frames' / date_folder / session_id[:8]
-        date_folder = datetime.now().strftime("%Y-%m-%d")
-        frames_dir = storage.local_data_dir / 'gameplay' / 'frames' / date_folder / (session_id[:8] if session_id else "unknown")
-        
-        if frames_dir.exists():
-            # collected_states를 yolo_exporter 형식으로 변환
-            # yolo_exporter는 {frame, state} 형식을 기대함
-            exporter.export_session(session_id or f"session_{timestamp}", collected_states, frames_dir)
-            print(f"✅ YOLO 데이터셋 export 완료: {frames_dir}")
-        else:
-            print(f"⚠️ 프레임 디렉토리를 찾을 수 없음: {frames_dir}")
-            print(f"   → 프레임 이미지가 저장되지 않았을 수 있습니다.")
-            
-    except Exception as e:
-        print(f"❌ YOLO Export 실패: {e}")
-        import traceback
-        traceback.print_exc()
-
-# ==========================
-# AI 레벨별 휴리스틱 함수
-# ==========================
-
-def _level1_heuristic(game_state: dict) -> str:
-    """
-    Level 1: 간단한 휴리스틱 (메테오 회피만)
-    """
-    player = game_state.get('player', {})
-    obstacles = game_state.get('obstacles', [])
-    
-    player_x = player.get('x', 480)
-    player_y = player.get('y', 360)
-    player_size = player.get('size', 50)
-    player_center_x = player_x + player_size / 2
-    
-    # 가장 가까운 메테오 찾기
-    nearest_meteor = None
-    nearest_dist = float('inf')
-    
-    for obs in obstacles:
-        if obs.get('type') != 'meteor':
-            continue
-        
-        obs_x = obs.get('x', 0)
-        obs_y = obs.get('y', 0)
-        obs_size = obs.get('size', 50)
-        obs_center_x = obs_x + obs_size / 2
-        
-        if obs_y < player_y:  # 위에서 오는 메테오만
-            x_overlap = abs(player_center_x - obs_center_x) < 200
-            if x_overlap:
-                dist = abs(player_center_x - obs_center_x) + (player_y - obs_y) * 0.5
-                if dist < nearest_dist:
-                    nearest_dist = dist
-                    nearest_meteor = obs
-    
-    # 메테오 회피
-    if nearest_meteor and nearest_dist < 100:
-        meteor_center_x = nearest_meteor['x'] + nearest_meteor.get('size', 50) / 2
-        if meteor_center_x < player_center_x:
-            return 'right'
-        else:
-            return 'left'
-    
-    return 'stay'
-
-
-def _level3_heuristic(game_state: dict) -> str:
-    """
-    Level 3: 고급 휴리스틱 (메테오 회피 + 별 수집 + 라바 피하기)
-    """
-    player = game_state.get('player', {})
-    obstacles = game_state.get('obstacles', [])
-    lava = game_state.get('lava', {})
-    
-    player_x = player.get('x', 480)
-    player_y = player.get('y', 360)
-    player_size = player.get('size', 50)
-    player_center_x = player_x + player_size / 2
-    player_vy = player.get('vy', 0)
-    on_ground = player_y >= HEIGHT - player_size - 10
-    
-    # Priority 1: 라바 피하기
-    lava_state = lava.get('state', 'inactive')
-    if lava_state == 'active':
-        lava_zone_x = lava.get('zone_x', 0)
-        lava_zone_width = lava.get('zone_width', 320)
-        lava_center_x = lava_zone_x + lava_zone_width / 2
-        
-        if abs(player_center_x - lava_center_x) < 200:
-            if lava_center_x < player_center_x:
-                return 'right'
-            else:
-                return 'left'
-    
-    # Priority 2: 메테오 회피
-    nearest_meteor = None
-    nearest_dist = float('inf')
-    
-    for obs in obstacles:
-        if obs.get('type') != 'meteor':
-            continue
-        
-        obs_x = obs.get('x', 0)
-        obs_y = obs.get('y', 0)
-        obs_size = obs.get('size', 50)
-        obs_center_x = obs_x + obs_size / 2
-        
-        if obs_y < player_y:
-            x_overlap = abs(player_center_x - obs_center_x) < 200
-            if x_overlap:
-                dist = abs(player_center_x - obs_center_x) + (player_y - obs_y) * 0.5
-                if dist < nearest_dist:
-                    nearest_dist = dist
-                    nearest_meteor = obs
-    
-    if nearest_meteor and nearest_dist < 150:
-        meteor_center_x = nearest_meteor['x'] + nearest_meteor.get('size', 50) / 2
-        if meteor_center_x < player_center_x:
-            return 'right'
-        elif meteor_center_x > player_center_x:
-            return 'left'
-        elif on_ground:
-            return 'jump'
-    
-    # Priority 3: 별 수집
-    nearest_star = None
-    nearest_star_dist = float('inf')
-    
-    for obs in obstacles:
-        if obs.get('type') != 'star':
-            continue
-        
-        obs_x = obs.get('x', 0)
-        obs_y = obs.get('y', 0)
-        obs_center_x = obs_x + obs.get('size', 30) / 2
-        
-        dist = np.sqrt((player_center_x - obs_center_x)**2 + (player_y - obs_y)**2)
-        if dist < nearest_star_dist:
-            nearest_star_dist = dist
-            nearest_star = obs
-    
-    if nearest_star and nearest_star_dist < 200:
-        star_center_x = nearest_star['x'] + nearest_star.get('size', 30) / 2
-        if abs(star_center_x - player_center_x) > 20:
-            if star_center_x < player_center_x:
-                return 'left'
-            else:
-                return 'right'
-        elif on_ground and star_center_x - player_center_x < 50:
-            return 'jump'
-    
-    # Priority 4: 중앙 유지
-    if player_center_x < 300:
-        return 'right'
-    elif player_center_x > 660:
-        return 'left'
-    
-    return 'stay'
-
-
-# ==========================
-# 게임 루프 (백그라운드 태스크)
+# Game Loop (Background Task)
 # ==========================
 
 def game_loop():
     """
-    30 FPS 정도로 계속 step() 하면서
-    game_update, game_over 를 socket으로 보내는 루프.
+    The main loop that continuously calls step() at approx. 30 FPS,
+    sending game_update and game_over events via socket.
     """
     global game_running, last_action, pending_jump
     global collected_states_count, last_action_probs
     global start_time, game, current_mode, player_name
-    global collected_states, collected_bboxes
 
     fps = 30.0
     dt = 1.0 / fps
@@ -565,158 +309,62 @@ def game_loop():
         if game is None:
             break
 
-        # 1) 액션 결정
+        # 1) Determine Action
         action = "stay"
         action_probs = None
-        det_client = []  # 클라이언트에 보낼 YOLO 박스
+        det_client = []  # YOLO boxes to send to client
 
         if current_mode == "human":
-            # jump는 한 프레임만
+            # Jump action is only for one frame
             if pending_jump:
                 action = "jump"
                 pending_jump = False
             else:
                 action = last_action
-            
-            # 🔧 버그 수정: Human 모드에서도 데이터 수집 카운트 증가
-            collected_states_count += 1
 
-        else:  # AI 모드
-            # GameCore 렌더 → YOLO → state encoding
+        else:  # AI Mode
+            # GameCore Render → YOLO → State Encoding → PPO
             frame_rgb = game.render()
             det_state, det_client = run_yolo_on_frame(frame_rgb)
 
-            # encode_state 에 GameCore의 내부 상태 dict 전달
+            # Pass GameCore's internal state dict to encode_state
             game_state = game._get_state()
             state_vec = encode_state(det_state, game_state)
 
-            # 레벨별 AI 의사결정
-            action = "stay"
-            action_probs = None
-            
+            # PPO action selection (eval mode)
             try:
-                if current_ai_level == 1:
-                    # Level 1: 간단한 휴리스틱 (메테오 회피만)
-                    action = _level1_heuristic(game_state)
-                    
-                elif current_ai_level == 2:
-                    # Level 2: PPO 모델
-                    if ppo_agent is not None and TORCH_AVAILABLE:
-                        try:
-                            action_idx = ppo_agent.select_action_eval(state_vec)
-                            action = ACTION_LIST[action_idx]
-                            
-                            # action probs 추출
-                            with torch.no_grad():
-                                s = torch.FloatTensor(state_vec).unsqueeze(0)
-                                if next(ppo_agent.policy_old.parameters()).is_cuda:
-                                    s = s.cuda()
-                                probs_tensor = ppo_agent.policy_old(s)
-                                action_probs = probs_tensor.cpu().numpy()[0].tolist()
-                        except Exception as e:
-                            print(f"⚠️ Level 2 PPO error: {e}")
-                            action = _level1_heuristic(game_state)
-                    else:
-                        action = _level1_heuristic(game_state)
-                        
-                elif current_ai_level == 3:
-                    # Level 3: PPO + 고급 휴리스틱 (별 수집 우선)
-                    if ppo_agent is not None and TORCH_AVAILABLE:
-                        try:
-                            action_idx = ppo_agent.select_action_eval(state_vec)
-                            action = ACTION_LIST[action_idx]
-                            
-                            # action probs 추출
-                            with torch.no_grad():
-                                s = torch.FloatTensor(state_vec).unsqueeze(0)
-                                if next(ppo_agent.policy_old.parameters()).is_cuda:
-                                    s = s.cuda()
-                                probs_tensor = ppo_agent.policy_old(s)
-                                action_probs = probs_tensor.cpu().numpy()[0].tolist()
-                        except Exception as e:
-                            print(f"⚠️ Level 3 PPO error: {e}")
-                            action = _level3_heuristic(game_state)
-                    else:
-                        action = _level3_heuristic(game_state)
-                        
-                elif current_ai_level == 4:
-                    # Level 4: PPO (최고 성능)
-                    if ppo_agent is not None and TORCH_AVAILABLE:
-                        try:
-                            action_idx = ppo_agent.select_action_eval(state_vec)
-                            action = ACTION_LIST[action_idx]
-                            
-                            # action probs 추출
-                            with torch.no_grad():
-                                s = torch.FloatTensor(state_vec).unsqueeze(0)
-                                if next(ppo_agent.policy_old.parameters()).is_cuda:
-                                    s = s.cuda()
-                                probs_tensor = ppo_agent.policy_old(s)
-                                action_probs = probs_tensor.cpu().numpy()[0].tolist()
-                        except Exception as e:
-                            print(f"⚠️ Level 4 PPO error: {e}")
-                            action = _level3_heuristic(game_state)
-                    else:
-                        action = _level3_heuristic(game_state)
-                else:
-                    # 기본: Level 1
-                    action = _level1_heuristic(game_state)
-                    
+                # action index
+                action_idx = ppo_agent.select_action_eval(state_vec)
+                action = ACTION_LIST[action_idx]
+
+                # action probs (extracted via policy_old)
+                with torch.no_grad():
+                    s = torch.FloatTensor(state_vec).unsqueeze(0)
+                    if next(ppo_agent.policy_old.parameters()).is_cuda:
+                        s = s.cuda()
+                    probs_tensor = ppo_agent.policy_old(s)
+                    action_probs = probs_tensor.cpu().numpy()[0].tolist()
             except Exception as e:
-                print(f"⚠️ AI decision error (level {current_ai_level}): {e}")
+                print(f"⚠️ PPO action selection error: {e}")
                 action = "stay"
                 action_probs = None
 
-            # state_vec 하나 수집했다고 가정
+            # Assume one state_vec collected
             collected_states_count += 1
 
-        # 2) 환경 step
+        # 2) Environment Step
         state_dict, reward, done, _ = game.step(action)
 
-        # 🔧 버그 수정: lava timer는 game_core.py에서 이미 계산되어 있음
-        # 추가 처리 불필요
+        # Insert lava timer (for use in HTML)
+        if "lava" in state_dict:
+            # While the timer should be updated based on state,
+            # we keep the default 0.0 for now.
+            state_dict["lava"]["timer"] = 0.0
 
-        # 📊 데이터 수집: 게임 상태 저장
-        frame_num = state_dict.get("frame", 0)
-        collected_states.append({
-            "frame": frame_num,
-            "state": state_dict,
-            "action": action,
-            "reward": reward,
-            "done": done
-        })
-        
-        # 📊 데이터 수집: 바운딩 박스 정보 저장
-        objects = []
-        # 플레이어 bbox
-        if "player" in state_dict:
-            player = state_dict["player"]
-            objects.append({
-                "class": "player",
-                "x": player.get("x", 0),
-                "y": player.get("y", 0),
-                "w": player.get("size", 50),
-                "h": player.get("size", 50)
-            })
-        # 장애물 bbox
-        if "obstacles" in state_dict:
-            for obs in state_dict["obstacles"]:
-                objects.append({
-                    "class": obs.get("type", "obstacle"),
-                    "x": obs.get("x", 0),
-                    "y": obs.get("y", 0),
-                    "w": obs.get("size", 50),
-                    "h": obs.get("size", 50)
-                })
-        collected_bboxes.append({
-            "frame": frame_num,
-            "objects": objects
-        })
-
-        # 3) 시간 계산
+        # 3) Calculate Time
         time_elapsed = time.time() - start_time
 
-        # 4) state payload build
+        # 4) Build State Payload
         if current_mode == "ai":
             last_action_probs = action_probs
         else:
@@ -724,30 +372,27 @@ def game_loop():
 
         payload = build_state_payload(state_dict, time_elapsed)
 
-        # AI 모드일 때 YOLO 결과 client에 전달 (show_detections 플래그 확인)
+        # Send YOLO results to client in AI mode
         if current_mode == "ai":
-            if show_detections:
-                payload["detections"] = det_client
-            else:
-                payload["detections"] = []  # 빈 배열로 보내서 토글 기능 지원
+            payload["detections"] = det_client
 
-        # 5) 클라이언트로 전송
+        # 5) Transmit to Client
         if state_dict.get("frame", 0) % 30 == 0:
             print(f"[DEBUG] frame={state_dict.get('frame')} score={state_dict.get('score')}")
 
-        # index.html 쪽에서 data.state || data 로 처리하니까
-        # 여기서는 payload 그대로 보냄
+        # The index.html handles data.state || data, so send payload directly
         socketio.emit("game_update", payload, namespace='/')
 
-        # ❌ game_started 는 여기서 매 프레임 보내면 안 됨 → on_start_game 에서 한 번만 보냄
-        # socketio.emit("game_started", payload)  # ← 이 줄은 삭제!
+        # ❌ game_started should not be sent every frame → send once in on_start_game
+        # socketio.emit("game_started", payload)  # ← Delete this line!
 
-        # 6) 게임 오버 처리
+        # 6) Game Over Handling
         if done:
             game_running = False
             final_score = state_dict.get("score", 0)
             final_time = time_elapsed
 
+            # Record entry for leaderboard
             entry = {
                 "player": (player_name or "AI") if current_mode == "ai" else (player_name or "Unknown"),
                 "score": final_score,
@@ -756,23 +401,21 @@ def game_loop():
                 "date": datetime.now().isoformat(),
             }
             leaderboard.append(entry)
-            
-            # 📊 데이터 수집: 게임 종료 시 파일로 저장
-            save_gameplay_data(current_sid, current_mode, player_name, final_score, final_time)
 
-            # 상위 50개까지만 유지
+            # Keep only the top 50 scores
             if len(leaderboard) > 50:
                 leaderboard[:] = sorted(
                     leaderboard,
                     key=lambda x: (-x.get("time", 0), -x.get("score", 0))
                 )[:50]
 
-            # 상위 5개 내보내기
+            # Get top 5 for immediate display
             top5 = sorted(
                 leaderboard,
                 key=lambda x: (-x.get("time", 0), -x.get("score", 0))
             )[:5]
 
+            # Notify client of game over
             socketio.emit("game_over", {
                 "score": final_score,
                 "time": final_time,
@@ -782,14 +425,14 @@ def game_loop():
             print(f"💀 Game over: score={final_score}, time={final_time:.1f}s, mode={current_mode}")
             break
 
+        # Wait for the next frame
         time.sleep(dt)
 
     print("🛑 Game loop ended")
 
 
-
 # ==========================
-# Socket.IO 이벤트 핸들러
+# Socket.IO Event Handlers
 # ==========================
 
 @socketio.on("connect")
@@ -805,6 +448,7 @@ def on_disconnect():
 @socketio.on("start_game")
 def on_start_game(data):
     """
+    Handles game start request from client.
     data: {
       mode: 'human' | 'ai',
       player_name: str or null,
@@ -816,19 +460,18 @@ def on_start_game(data):
     global game, game_running, current_mode, current_ai_level
     global last_action, pending_jump, start_time, player_name
     global collected_states_count, collected_images_count, last_action_probs
-    global collected_states, collected_bboxes
     global current_sid
 
     mode = data.get("mode", "human")
     name = data.get("player_name")
     ai_level = int(data.get("ai_level", 2))
     
-    # Track this client's session
+    # Track this client's session ID
     current_sid = request.sid
 
     print(f"🚀 start_game received: mode={mode}, player_name={name}, ai_level={ai_level}, sid={current_sid}")
 
-    # 새 게임 초기화
+    # Initialize new game
     game = GameCore()
     state = game._get_state()
 
@@ -840,30 +483,24 @@ def on_start_game(data):
     player_name = name if mode == "human" else None
     collected_states_count = 0
     collected_images_count = 0
-    collected_states = []
-    collected_bboxes = []
     last_action_probs = None
     start_time = time.time()
 
-    # 🔧 버그 수정: 게임 시작 시 명시적으로 "stay" 액션 전송
-    if mode == "human":
-        # 클라이언트에 "stay" 액션을 명시적으로 알림 (초기 움직임 방지)
-        socketio.emit("player_action", {"action": "stay"}, namespace="/", to=current_sid)
-    # 초기 상태 전송
+    # Send initial state
     payload = build_state_payload(state, 0.0)
     socketio.emit("game_started", {"state": payload}, namespace='/')
 
-    # 백그라운드 게임 루프 시작
+    # Start the background game loop
     socketio.start_background_task(game_loop)
 
-    # ack 콜백 응답
+    # Acknowledge callback response
     return {"status": "ok"}
 
 
 @socketio.on("player_action")
 def on_player_action(data):
     """
-    Human mode에서 키 입력 이벤트.
+    Key input events from human mode.
     data: { action: 'left' | 'right' | 'jump' }
     """
     global last_action, pending_jump
@@ -875,27 +512,26 @@ def on_player_action(data):
         return
 
     if action == "jump":
-        pending_jump = True
+        pending_jump = True # Set flag for one-frame jump
     elif action in ("left", "right", "stay"):
         last_action = action
 
 
 @socketio.on("toggle_detections")
 def on_toggle_detections():
+    """Toggles visibility of YOLO detection boxes on the client."""
     global show_detections
     show_detections = not show_detections
     print(f"👁️ YOLO detections {'ON' if show_detections else 'OFF'}")
-    # 클라이언트에 토글 상태 전송
-    socketio.emit("detection_toggled", {"show_detections": show_detections}, namespace='/')
 
 
 @socketio.on("frame_capture")
 def on_frame_capture(data):
     """
-    index.html에서 10프레임마다 보내는 캔버스 이미지.
+    Canvas image sent by index.html every 10 frames (for data collection).
     data: { image: 'data:image/png;base64,...', frame: int }
     """
-    global collected_images_count, current_sid
+    global collected_images_count
 
     img_data = data.get("image")
     frame_idx = data.get("frame", 0)
@@ -903,7 +539,7 @@ def on_frame_capture(data):
     if not img_data:
         return
 
-    # 'data:image/png;base64,' prefix 제거
+    # Remove 'data:image/png;base64,' prefix
     if img_data.startswith("data:image"):
         img_data = img_data.split(",")[1]
 
@@ -913,48 +549,46 @@ def on_frame_capture(data):
         print(f"⚠️ Failed to decode frame image: {e}")
         return
 
-    # 📸 프레임 이미지 저장 (YOLO 학습용)
-    # storage_manager를 사용하여 프레임 저장
-    try:
-        from storage_manager import get_storage_manager
-        storage = get_storage_manager()
-        saved_path = storage.save_frame_image(img_bytes, current_sid or "unknown", frame_idx)
-        if saved_path:
-            collected_images_count += 1
-    except Exception as e:
-        print(f"⚠️ 프레임 저장 실패: {e}")
-        collected_images_count += 1  # 카운트는 증가
+    # The decoded bytes can be saved to disk for offline training if desired
+    # Here, we only increment the counter
+    collected_images_count += 1
+
+    # Example: To save as ./collected_frames/frame_000123.png:
+    # save_dir = os.path.join(BASE_DIR, "collected_frames")
+    # os.makedirs(save_dir, exist_ok=True)
+    # filename = os.path.join(save_dir, f"frame_{frame_idx:06d}.png")
+    # with open(filename, "wb") as f:
+    #     f.write(img_bytes)
 
 
 # ==========================
-# 메인
+# Main Execution Block
 # ==========================
 
+# The following block is typically used when running the script directly.
+# The code loading models is duplicated inside the module scope for environment consistency
+# and inside the if __name__ == "__main__": block for direct execution convenience.
+
+# The first main block is for execution if this file is run as the main script.
 if __name__ == "__main__":
-    # YOLO 모델 로드
-    if YOLO_AVAILABLE:
-        try:
-            print("✅ Loading YOLO model:", YOLO_MODEL_PATH)
-            yolo_model = YOLO(YOLO_MODEL_PATH)
-        except Exception as e:
-            print(f"⚠️ YOLO model loading failed: {e}")
-            yolo_model = None
-    else:
-        yolo_model = None
-        print("⚠️ YOLO not available")
+    # Model loading is already done at the module level, but can be done again here
+    # or the checks can be made more robust if models are not loaded globally.
+    print("✅ Loading YOLO model:", YOLO_MODEL_PATH)
+    yolo_model = YOLO(YOLO_MODEL_PATH) # Re-load if necessary, or ensure global var is set
 
-    # PPO 모델 로드
-    if TORCH_AVAILABLE and PPOAgent is not None:
-        try:
-            print("✅ Loading PPO model:", PPO_MODEL_PATH)
-            ppo_agent = load_ppo_for_web(PPO_MODEL_PATH)
-        except Exception as e:
-            print(f"⚠️ PPO model loading failed: {e}")
-            ppo_agent = None
-    else:
-        ppo_agent = None
-        print("⚠️ PPO not available - using heuristics only")
+    print("✅ Loading PPO model:", PPO_MODEL_PATH)
+    ppo_agent = load_ppo_for_web(PPO_MODEL_PATH) # Re-load if necessary
 
-    # Flask+SocketIO 서버 실행
-    # 포트 5001 사용 (macOS ControlCenter가 5000 사용 중)
-    socketio.run(app, host="0.0.0.0", port=5001, debug=True)
+    # Run Flask+SocketIO server
+    # Note: The second if __name__ == "__main__": block is the actual execution point
+    # in some deployment environments (e.g., when PORT is set).
+    pass # This first part is technically redundant due to the second block, but kept for historical context
+
+
+# This second block is often used in environments that set the PORT variable.
+if __name__ == "__main__":
+    import os
+    port = int(os.getenv("PORT", 5000))
+    print(f"🚀 Running in LOCAL development mode on port {port}")
+    # Run the SocketIO server
+    socketio.run(app, host="0.0.0.0", port=port, debug=True, allow_unsafe_werkzeug=True)
