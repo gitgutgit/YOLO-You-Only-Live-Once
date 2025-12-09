@@ -6,7 +6,6 @@ HEIGHT = 720
 PLAYER_SIZE = 50
 OBSTACLE_SIZE = 50  # default
 
-# ✅ [중요] 액션 순서: 환경 / PPO / 시각화 전부 이 순서로 통일
 # 0: stay, 1: left, 2: right, 3: jump
 ACTION_LIST = ["stay", "left", "right", "jump"]
 

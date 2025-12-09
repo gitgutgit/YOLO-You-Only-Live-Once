@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 import logging
 
-# Cloud Storage import (로컬에서 없으면 fallback)
+# Cloud Storage import 
 try:
     from google.cloud import storage
     GCS_AVAILABLE = True

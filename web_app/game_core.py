@@ -62,13 +62,11 @@ class GameCore:
         self.lava_zone_x = 0
         self.player_health = 100
         
-        # 🔧 버그 수정: 별 획득 플래그 초기화
         self.star_collected = False
         
-        # 🎯 점수 시스템 개선: 세부 점수 추적
-        self.time_score = 0      # 시간 점수 (1초당 1점)
-        self.star_score = 0      # 별 점수
-        self.dodged_meteors = 0  # 피한 메테오 수
+        self.time_score = 0     
+        self.star_score = 0    
+        self.dodged_meteors = 0  
         
         return self._get_state()
 
@@ -239,7 +237,7 @@ class GameCore:
         
         self._prev_meteor_dist = nearest_meteor_dist
 
-        # 🔧 버그 수정: 별 획득 플래그 초기화
+   
         self.star_collected = False
         
         for obs in self.obstacles[:]:
@@ -250,12 +248,12 @@ class GameCore:
                     done = True
                 elif obs['type'] == 'star':
                     reward += 500
-                    # 🎯 별 점수 낮추기: 50점 → 10점
+                    
                     star_points = 10
                     self.star_score += star_points
                     self.score = self.time_score + self.star_score
                     self.obstacles.remove(obs)
-                    # 🔧 버그 수정: 별 획득 플래그 설정
+                
                     self.star_collected = True
                     
         # Check Lava
