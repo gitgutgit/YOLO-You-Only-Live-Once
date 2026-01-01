@@ -7,7 +7,7 @@ Combines **YOLOv8** object detection with **PPO reinforcement learning** for rea
 
 ## 📄 Paper / Report
 
-- **Project report (PDF):** [Yolo_dl_paper.pdf](./Yolo_dl_paper.pdf)
+- **Project report (PDF):** [Yolo_dl_paper.pdf](./YOLO_dl_paper.pdf)
 
 
 
