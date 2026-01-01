@@ -5,6 +5,12 @@ Combines **YOLOv8** object detection with **PPO reinforcement learning** for rea
 
 **Live Demo**: https://yolo-web-demo-production.up.railway.app
 
+## 📄 Paper / Report
+
+- **Project report (PDF):** [Yolo_dl_paper.pdf](./Yolo_dl_paper.pdf)
+
+
+
 ---
 
 ## 🚀 Quick Start (Local Setup)
