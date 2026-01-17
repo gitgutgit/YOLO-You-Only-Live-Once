@@ -7,7 +7,7 @@ Combines **YOLOv8** object detection with **PPO reinforcement learning** for rea
 
 ## 📄 Paper / Report
 
-- **Project report (PDF):** [Yolo_dl_paper.pdf](./YOLO_dl_paper.pdf)
+- **Project report (PDF):** [Yolo_dl_paper.pdf](https://raw.githubusercontent.com/gitgutgit/YOLO-You-Only-Live-Once/main/YOLO_dl_paper.pdf)
 
 
 
